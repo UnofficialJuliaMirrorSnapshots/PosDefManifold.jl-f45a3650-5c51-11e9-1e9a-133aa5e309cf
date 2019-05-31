@@ -91,7 +91,7 @@ end
  - with ``a=1`` we move up to ``Q``,
  - with ``a=1/2`` we move to the mid-point of ``P`` and ``Q`` (mean).
 
- Using the Fisher metric, argument `a` can be *any* real number, for instance:
+ Using the Fisher metric, argument ``a`` can be *any* real number, for instance:
  - with ``0<a<1`` we move toward ``Q`` (*attraction*),
  - with ``a>1`` we move over and beyond ``Q`` (*extrapolation*),
  - with ``a<0`` we move back away from Q (*repulsion*).
@@ -105,7 +105,8 @@ end
 !!! note "Nota Bene"
     For the [logdet zero](@ref) and [Jeffrey](@ref) metric no closed form expression
     for the geodesic is available to the best of authors' knowledge,
-    so in this case the geodesic is found as the weighted mean using [`mean`](@ref).
+    so in this case the geodesic is found as the weighted mean using the
+    [`mean`](@ref) function.
     For the [Von Neumann](@ref) not even an expression for the mean is available,
     so in this case the geodesic is not provided and a *warning* is printed.
 
@@ -435,7 +436,6 @@ distance²=distanceSqr # alias
     (3) distance(metric::Metric, D::𝔻{S}) where S<:Real
     (4) distance(metric::Metric, D::𝔻{S}, E::𝔻{S}) where S<:Real
 
-
  (1) Return ``δ(P, I)``, the *distance* between positive definite matrix ``P`` and
  the identity matrix.
 
@@ -463,10 +463,13 @@ distance(metric::Metric, D::𝔻{T}, E::𝔻{T}) where T<:Real = √(distance²(
 # -----------------------------------------------------------
 
 """
+```
     (1) distanceSqrMat(metric::Metric, 𝐏::ℍVector;
-                        <⏩=false>)
+    <⏩=false>)
+
     (2) distanceSqrMat(type::Type{T}, metric::Metric, 𝐏::ℍVector;
-                        <⏩=false>) where T<:AbstractFloat
+    <⏩=false>) where T<:AbstractFloat
+```
 
  **alias**: `distance²Mat`
 
@@ -489,7 +492,7 @@ distance(metric::Metric, D::𝔻{T}, E::𝔻{T}) where T<:Real = √(distance²(
 
 !!! warning "Multi-Threading"
     [Multi-threading](https://docs.julialang.org/en/v1/manual/parallel-computing/#Multi-Threading-(Experimental)-1)
-    is still experimental in julia. You should check the result on each computer.
+    is still experimental in julia.
     Multi-threading is automatically disabled if the number of threads
     Julia is instructed to use is ``<2`` or ``<2k``. See [Threads](@ref).
 
@@ -504,15 +507,16 @@ distance(metric::Metric, D::𝔻{T}, E::𝔻{T}) where T<:Real = √(distance²(
     # Compute the squared inter-distance matrix according to the log Euclidean metric.
     # This is much faster as compared to the Fisher metric and in general
     # it is a good approximation.
-    Dsqr=distanceSqrMat(logEuclidean, Pset)
-    # or, using unicode: Δ²=distanceSqrMat(logEuclidean, 𝐏)
+    Δ²=distanceSqrMat(logEuclidean, Pset)
 
     # return a matrix of type Float64
-    Dsqr64=distanceSqrMat(Float64, logEuclidean, Pset)
+    Δ²64=distanceSqrMat(Float64, logEuclidean, Pset)
 
     # Multi-threaded
-    Dsqr=distanceSqrMat(Fisher, Pset; ⏩=true)
+    Δ²=distanceSqrMat(Fisher, Pset; ⏩=true)
 
+    # Get the full matrix of inter-distances
+    fullΔ²=Hermitian(Δ², :L)
 
 """
 function distanceSqrMat(type::Type{T}, metric::Metric, 𝐏::ℍVector;
@@ -615,10 +619,13 @@ distance²Mat=distanceSqrMat
 
 
 """
+```
     (1) distanceMat(metric::Metric, 𝐏::ℍVector;
-                                    <⏩=true>)
+    <⏩=true>)
+
     (2) distanceMat(type::Type{T}, metric::Metric, 𝐏::ℍVector;
-                                    <⏩=true>) where T<:AbstractFloat
+    <⏩=true>) where T<:AbstractFloat
+```
 
  Given a 1d array ``𝐏`` of ``k`` positive definite matrices
  ``{P_1,...,P_k}`` of [ℍVector type](@ref), create the ``k⋅k`` real
@@ -643,7 +650,7 @@ distance²Mat=distanceSqrMat
 
 !!! warning "Multi-Threading"
     [Multi-threading](https://docs.julialang.org/en/v1/manual/parallel-computing/#Multi-Threading-(Experimental)-1)
-    is still experimental in julia. You should check the result on each computer.
+    is still experimental in julia.
     Multi-threading is automatically disabled if the number of threads
     Julia is instructed to use is ``<2`` or ``<4k``. See [Threads](@ref).
 
@@ -653,14 +660,16 @@ distance²Mat=distanceSqrMat
     using PosDefManifold
     # Generate a set of 4 random 10x10 SPD matrices
     Pset=randP(10, 4) # or, using unicode: 𝐏=randP(10, 4)
-    D=distanceMat(Fisher, Pset)
-    # or, using unicode: Δ=distanceMat(Fisher, 𝐏)
+    Δ=distanceMat(Fisher, Pset)
 
     # return a matrix of type Float64
-    D64=distanceMat(Float64, Fisher, Pset)
+    Δ64=distanceMat(Float64, Fisher, Pset)
 
     # Multi-threaded
-    D64=distanceMat(Fisher, Pset; ⏩=true)
+    Δ64=distanceMat(Fisher, Pset; ⏩=true)
+
+    # Get the full matrix of inter-distances
+    fullΔ=Hermitian(Δ, :L)
 
 """
 distanceMat(type::Type{T}, metric::Metric, 𝐏::ℍVector;
@@ -708,8 +717,8 @@ distanceMat(metric::Metric, 𝐏::ℍVector;
     using PosDefManifold
     # Generate a set of 4 random 10x10 SPD matrices
     Pset=randP(10, 4) # or, using unicode: 𝐏=randP(10, 4)
-    Dsqr=distanceSqrMat(Fisher, Pset) # or: Δ²=distanceSqrMat(Fisher, 𝐏)
-    lap=laplacian(Dsqr) # or: Ω=laplacian(Δ²)
+    Δ²=distanceSqrMat(Fisher, Pset)
+    Ω=laplacian(Δ²)
 
  """
 function laplacian(Δ²::𝕃{T}) where T<:Real
@@ -732,12 +741,13 @@ end
 
 
 """
+```
     laplacianEigenMaps(Ω::𝕃{S}, q::Int;
-                      <
-                      tol::Real=0,
-                      maxiter::Int=300,
-                      ⍰=false)              where S<:Real
-                      >
+    <
+    tol::Real=0,
+    maxiter::Int=300,
+    ⍰=false >) where S<:Real
+```
 
  **alias**: `laplacianEM`
 
@@ -749,8 +759,8 @@ end
  The eigenvectors are of the same type as ``Ω``.
 
  The eigenvectors of the normalized Laplacian are computed by the
- power iterations+modified Gram-Schmidt method,
- allowing the execution of this function for big Laplacian matrices.
+ power iterations+modified Gram-Schmidt method (see [`powerIterations`](@ref)),
+ allowing the execution of this function for Laplacian matrices of very large size.
 
  Return the 4-tuple ``(Λ, U, iterations, convergence)``, where:
  - ``Λ`` is a ``q⋅q`` diagonal matrix holding on diagonal the eigenvalues corresponding to the ``q`` dimensions of the Laplacian eigen maps,
@@ -759,9 +769,9 @@ end
  - ``convergence`` is the convergence attained by the power method.
 
  The eigenvectors of ``U`` holds the coordinates of the points in a
- low-dimension Euclidean space (typically two or three).
- This is done for, among other purposes, classifying them and
- following their trajectories over time or other dimensions.
+ low-dimension Euclidean space (typically two or three for plotting).
+ This is done for, among other purposes, plotting data in low-dimension
+ classifying them and following their trajectories over time or other dimensions.
  For examples of applications see Ridrigues et *al.* (2018) [🎓](@ref)
  and references therein.
 
@@ -812,21 +822,17 @@ laplacianEM=laplacianEigenMaps
 
 
 """
+```
     (1) spectralEmbedding(metric::Metric, 𝐏::ℍVector, q::Int;
-                            <
-                            tol::Real=0,
-                            maxiter::Int=300,
-                            ⍰=false,
-                            ⏩=false)
-                            >
+    <
+    tol::Real=0,
+    maxiter::Int=300,
+    ⍰=false,
+    ⏩=false >)
 
     (2) spectralEmbedding(type::Type{T}, metric::Metric, 𝐏::ℍVector, q::Int;
-                            <
-                            tol::Real=0,
-                            maxiter::Int=300,
-                            ⍰=false,
-                            ⏩=false)            where T<:Real
-                            >
+    < same optional keyword arguments as in (1) >) where T<:Real
+```
 
  Given a 1d array ``𝐏`` of ``k`` positive definite matrices ``{P_1,...,P_k}``
  (real or complex), compute its *eigen maps* in ``q`` dimensions.
@@ -846,7 +852,7 @@ laplacianEM=laplacianEigenMaps
  - ``iterations`` is the number of iterations executed by the power method,
  - ``convergence`` is the convergence attained by the power method.
 
- **Arguments** `(metric, 𝐏, q, <tol::Real=0, maxiter::Int=300, ⍰=false>)`:
+ **Arguments**:
  - `metric` is the metric of type [Metric::Enumerated type](@ref) used for computing the inter-distances,
  - ``𝐏`` is a 1d array of ``k`` positive matrices of [ℍVector type](@ref),
  - ``q`` is the dimension of the Laplacian eigen maps;
@@ -854,13 +860,13 @@ laplacianEM=laplacianEigenMaps
    * `tol` is the tolerance for convergence of the power method (see below),
    * `maxiter` is the maximum number of iterations allowed for the power method,
    * if `⍰` is true the convergence at all iterations will be printed.
- - if ⏩=true the computation of inter-distances is multi-threaded.
+   * if ⏩=true the computation of inter-distances is multi-threaded.
 
- !!! warning "Multi-Threading"
-     [Multi-threading](https://docs.julialang.org/en/v1/manual/parallel-computing/#Multi-Threading-(Experimental)-1)
-     is still experimental in julia. You should check the result on each computer.
-     Multi-threading is automatically disabled if the number of threads
-     Julia is instructed to use is ``<2`` or ``<2k``. See [Threads](@ref).
+!!! warning "Multi-Threading"
+    [Multi-threading](https://docs.julialang.org/en/v1/manual/parallel-computing/#Multi-Threading-(Experimental)-1)
+    is still experimental in julia. You should check the result on each computer.
+    Multi-threading is automatically disabled if the number of threads
+    Julia is instructed to use is ``<2`` or ``<2k``. See [Threads](@ref).
 
 !!! note "Nota Bene"
     ``tol`` defaults to the square root of `Base.eps` of the `Float32` type (1)
@@ -919,19 +925,20 @@ end
 # -----------------------------------------------------------
 
 """
+```
     (1) mean(metric::Metric, P::ℍ{T}, Q::ℍ{T}) where T<:RealOrComplex
 
     (2) mean(metric::Metric, D::𝔻{T}, E::𝔻{T}) where T<:Real
 
     (3) mean(metric::Metric, 𝐏::ℍVector;
-            <
-            w::Vector=[],
-            ✓w=true,
-            ⏩=false)
-            >
+    <
+    w::Vector=[],
+    ✓w=true,
+    ⏩=false >)
 
     (4) mean(metric::Metric, 𝐃::𝔻Vector;
-            < optional keyword arguments in (3) ) >
+    < same optional keyword arguments as in (3) >)
+```
 
  (1) Mean of two positive definite matrices, passed in arbitrary order as
  arguments ``P`` and ``Q``, using the specified `metric` of type
@@ -964,19 +971,19 @@ end
  calling this function repeatedly without normalizing the same weights
  vector each time.
 
- Adopting the `Fisher`, `logdet0` and `Wasserstein``metric in (3) and the
+ Adopting the `Fisher`, `logdet0` and `Wasserstein` metric in (3) and the
  `logdet0` metric in (4), the mean is computed by means of an iterative
  algorithm and information on its convergence is displayed in the REPL.
  For suppressing this information and for more options for computing these means
  call directly functions [`geometricMean`](@ref), [`logdet0Mean`](@ref)
- and [`wasMean`](@ref).
+ and [`wasMean`](@ref). See also the robust function [`geometricpMean`](@ref).
 
  For (3) and (4), if `⏩=true` is passed as *<optional keyword argument>*,
  the computation of the mean is multi-threaded.
 
 !!! warning "Multi-Threading"
     [Multi-threading](https://docs.julialang.org/en/v1/manual/parallel-computing/#Multi-Threading-(Experimental)-1)
-    is still experimental in julia. You should check the result on each computer.
+    is still experimental in julia.
     Multi-threading is automatically disabled if the number of threads
     Julia is instructed to use is ``<2`` or ``<4k``. See [Threads](@ref).
 
@@ -1192,11 +1199,13 @@ end # function
 
 
 """
+```
     (1) means(metric::Metric, 𝒫::ℍVector₂;
-                <⏩=false>)
+    <⏩=false>)
 
     (2) means(metric::Metric, 𝒟::𝔻Vector₂;
-                <⏩=false>)
+    <⏩=false>)
+```
 
  (1) Given a 2d array ``𝒫`` of positive definite matrices as an [ℍVector₂ type](@ref)
  compute the [Fréchet mean](@ref) for as many [ℍVector type](@ref) objects
@@ -1217,7 +1226,7 @@ end # function
 
 !!! warning "Multi-Threading"
     [Multi-threading](https://docs.julialang.org/en/v1/manual/parallel-computing/#Multi-Threading-(Experimental)-1)
-    is still experimental in julia. You should check the result on each computer.
+    is still experimental in julia.
     For each mean to be computed, multi-threading is automatically disabled
     if the number of threads Julia is instructed to use is ``<2`` or ``<4k``,
     where ``k`` is the number of matrices for which the mean is to be computed.
@@ -1251,7 +1260,7 @@ end # function
      using BenchmarkTools
 
      # non multi-threaded, mean with closed-form solution
-     @benchmark(means(logEuclidean, sets))  		 # (6.196 s)
+     @benchmark(means(logEuclidean, sets)) # (6.196 s)
 
      # multi-threaded, mean with closed-form solution
      @benchmark(means(logEuclidean, sets; ⏩=true)) # (1.897 s)
@@ -1260,10 +1269,10 @@ end # function
 
      # non multi-threaded, mean with iterative solution
      # wait a bit
-     @benchmark(means(Fisher, sets))  		         # (4.672 s )
+     @benchmark(means(Fisher, sets)) # (4.672 s )
 
      # multi-threaded, mean with iterative solution
-     @benchmark(means(Fisher, sets; ⏩=true))        # (1.510 s)
+     @benchmark(means(Fisher, sets; ⏩=true)) # (1.510 s)
 """
 means(metric::Metric, 𝒫::ℍVector₂; ⏩=false) =
         ℍVector([mean(metric, 𝐏; ⏩=⏩) for 𝐏 in 𝒫])
@@ -1274,12 +1283,13 @@ means(metric::Metric, 𝒟::𝔻Vector₂; ⏩=false) =
 
 
 """
+```
     generalizedMean(𝐏::Union{ℍVector, 𝔻Vector}, p::Real;
-                   <
-                   w::Vector=[],
-                   ✓w=true,
-                   ⏩=false)
-                   >
+    <
+    w::Vector=[],
+    ✓w=true,
+    ⏩=false >)
+```
 
  Given a 1d array ``𝐏={P_1,...,P_k}`` of ``k`` positive definite matrices of
  [ℍVector type](@ref) or real positive definite diagonal matrices of
@@ -1305,7 +1315,7 @@ means(metric::Metric, 𝒟::𝔻Vector₂; ⏩=false) =
 
 !!! warning "Multi-Threading"
     [Multi-threading](https://docs.julialang.org/en/v1/manual/parallel-computing/#Multi-Threading-(Experimental)-1)
-    is still experimental in julia. You should check the result on each computer.
+    is still experimental in julia.
     Multi-threading is automatically disabled if the number of threads
     Julia is instructed to use is ``<2`` or ``<4k``. See [Threads](@ref).
 
@@ -1314,7 +1324,7 @@ means(metric::Metric, 𝒟::𝔻Vector₂; ⏩=false) =
  - For ``p=\\frac{1}{2}`` the generalized mean is the [modified Bhattacharyya mean](@ref).
  - For ``p=1`` the generalized mean is the [Euclidean](@ref) mean.
  - For ``p=-1`` the generalized mean is the [inverse Euclidean](@ref) mean.
- - For ``p=0`` the generalized mean is the [log Euclidean](@ref) mean, which is the [Fisher](@ref) mean when matrices in 𝐏 all pair-wise commute.
+ - For (the limit of) ``p=0`` the generalized mean is the [log Euclidean](@ref) mean, which is the [Fisher](@ref) mean when matrices in 𝐏 all pair-wise commute.
 
  Notice that when matrices in 𝐏 all pair-wise commute, for instance if the
  matrices are diagonal,
@@ -1378,16 +1388,17 @@ end # function
 
 
 """
-    geometricMean(  𝐏::Union{ℍVector, 𝔻Vector};
-                    <
-                    w::Vector=[],
-                    ✓w=true,
-                    init=nothing,
-                    tol::Real=0,
-                    maxiter::Int=500,
-                    ⍰=false,
-                    ⏩=false)
-                    >
+```
+    geometricMean(𝐏::Union{ℍVector, 𝔻Vector};
+    <
+    w::Vector=[],
+    ✓w=true,
+    init=nothing,
+    tol::Real=0,
+    maxiter::Int=500,
+    ⍰=false,
+    ⏩=false >)
+```
 
  **alias**: `gmean`
 
@@ -1543,16 +1554,17 @@ gMean=geometricMean
 
 
 """
-    geometricpMean(  𝐏::ℍVector, p::Real=goldeninv;
-                    <
-                    w::Vector=[],
-                    ✓w=true,
-                    init=nothing,
-                    tol::Real=0,
-                    maxiter::Int=500,
-                    ⍰=false,
-                    ⏩=false)
-                    >
+```
+    geometricpMean(𝐏::ℍVector, p::Real=goldeninv;
+    <
+    w::Vector=[],
+    ✓w=true,
+    init=nothing,
+    tol::Real=0,
+    maxiter::Int=750,
+    ⍰=false,
+    ⏩=false >)
+```
 
  **alias**: `gpmean`
 
@@ -1567,11 +1579,11 @@ gMean=geometricMean
  This function implements the p-dispersion gradient descent
  algorithm (to be published), yielding iterations
 
-``G ←G^{1/2}\\textrm{exp}\\big(\\sum_{i=1}^{k}w_ipδ^2(G, P_i)^(p-1)\\textrm{log}(G^{-1/2} P_i G^{-1/2})\\big)G^{1/2}.``
+``G ←G^{1/2}\\textrm{exp}\\big(\\sum_{i=1}^{k}pw_iδ^2(G, P_i)^{p-1}\\textrm{log}(G^{-1/2} P_i G^{-1/2})\\big)G^{1/2}.``
 
-- if ``p=1`` this yields the usual gradient descent algorithm implemented in [`geometricMean`](@ref)
-- if ``p=0.5`` this yields the Riemannian median
-- the default value of ``p`` is the iverse of the golden ratio (0.61803...)
+- if ``p=1`` this yields the usual gradient descent algorithm implemented in [`geometricMean`](@ref).
+- if ``p=0.5`` this yields the Riemannian median.
+- the default value of ``p`` is the inverse of the golden ratio (0.61803...).
 
  If you don't pass a weight vector with *<optional keyword argument>* ``w``,
  return the *unweighted geometric-p mean*.
@@ -1585,7 +1597,7 @@ gMean=geometricMean
  The following are more *<optional keyword arguments*>:
  - `init` is a matrix to be used as initialization for the mean. If no matrix is provided, the [log Euclidean](@ref) mean will be used,
  - `tol` is the tolerance for the convergence (see below).
- - `maxiter` is the maximum number of iterations allowed
+ - `maxiter` is the maximum number of iterations allowed.
  - if `⍰` is true, the convergence attained at each iteration is printed.
  - if ⏩=true the iterations are multi-threaded (see below).
 
@@ -1600,8 +1612,8 @@ gMean=geometricMean
     If the algorithm diverges and `⍰` is true a **warning** is printed
     indicating the iteration when this happened.
 
-    The smaller the parameter `p` is the slower and less likely the
-    convergence is. If the algorithm does not converge, increase `p` and/or
+    The smaller the parameter ``p`` is, the slower and less likely the
+    convergence is. If the algorithm does not converge, increase ``p`` and/or
     eliminate the otliers from the input set ``𝐏``.
 
     ``tol`` defaults to 100 times the square root of `Base.eps` of the nearest
@@ -1617,7 +1629,7 @@ gMean=geometricMean
  ## Examples
     using LinearAlgebra, PosDefManifold, Plots
 
-    # This examples show that this algorithm is more robust to otlier
+    # This examples show that this algorithm is more robust to outliers
     # as compared to the standard geometric mean algorithm
 
     # Generate a set of 100 random 10x10 SPD matrices
@@ -1641,7 +1653,7 @@ gMean=geometricMean
     S=HermitianVector([G, G1, H, H1])
 
     # check the interdistance matrix Δ² to verify that the geometric mean
-    # after the introduction of the outlier (`G1``)is far away from the other means
+    # after the introduction of the outlier (`G1``) is far away from the other means
     # that is, that element (4,3) is much smaller than element (2,1).
     Δ²=distance²Mat(Float64, Fisher, S)
 
@@ -1661,7 +1673,7 @@ function geometricpMean(𝐏::ℍVector, p::Real=goldeninv;
                         w::Vector = [], ✓w = true,
                         init = nothing,
                         tol::Real = 0,
-                        maxiter::Int = 500,
+                        maxiter::Int = 750,
                         ⍰ = false,
                         ⏩= false)
 
@@ -1713,16 +1725,17 @@ end
 
 
 """
+```
     logdet0Mean(𝐏::Union{ℍVector, 𝔻Vector};
-                <
-                w::Vector=[],
-                ✓w=true,
-                init=nothing,
-                tol::Real=0,
-                maxiter::Int = 500,
-                ⍰=false,
-                ⏩=false)
-                >
+    <
+    w::Vector=[],
+    ✓w=true,
+    init=nothing,
+    tol::Real=0,
+    maxiter::Int=500,
+    ⍰=false,
+    ⏩=false >)
+```
 
  **alias**: `ld0Mean`
 
@@ -1754,7 +1767,7 @@ end
  The following are more *<optional keyword arguments*>:
  - `init` is a matrix to be used as initialization for the mean. If no matrix is provided, the [log Euclidean](@ref) mean will be used,
  - `tol` is the tolerance for the convergence (see below).
- - `maxiter` is the maximum number of iterations allowed
+ - `maxiter` is the maximum number of iterations allowed.
  - if `⍰` is true, the convergence attained at each iteration is printed.
  - if ⏩=true the iterations are multi-threaded (see below).
 
@@ -1861,16 +1874,17 @@ ld0Mean=logdet0Mean
 
 
 """
+```
     wasMean(𝐏::Union{ℍVector, 𝔻Vector};
-            <
-            w::Vector=[],
-            ✓w=true,
-            init=nothing,
-            tol::Real=0,
-            maxiter::Int=500,
-            ⍰=false,
-            ⏩=false)
-            >
+    <
+    w::Vector=[],
+    ✓w=true,
+    init=nothing,
+    tol::Real=0,
+    maxiter::Int=500,
+    ⍰=false,
+    ⏩=false >)
+```
 
  Given a 1d array ``𝐏={P_1,...,P_k}`` of ``k`` positive definite matrices
  of [ℍVector type](@ref) or real positive definite diagonal matrices of
@@ -1900,7 +1914,7 @@ ld0Mean=logdet0Mean
  The following are more *<optional keyword arguments*>:
  - `init` is a matrix to be used as initialization for the mean. If no matrix is provided, the instance of [generalized means](@ref) with ``p=0.5`` will be used,
  - `tol` is the tolerance for the convergence (see below).
- - `maxiter` is the maximum number of iterations allowed
+ - `maxiter` is the maximum number of iterations allowed.
  - if `⍰` is true, the convergence attained at each iteration is printed.
  - if ⏩=true the iterations are multi-threaded (see below).
 
@@ -2016,16 +2030,17 @@ wasMean(𝐃::𝔻Vector;
 
 
 """
+```
     powerMean(𝐏::Union{ℍVector, 𝔻Vector}, p::Real;
-             <
-             w::Vector=[],
-             ✓w=true,
-             init=nothing,
-             tol::Real=0,
-             maxiter::Int=500
-             ⍰=false,
-             ⏩=false)
-             >
+    <
+    w::Vector=[],
+    ✓w=true,
+    init=nothing,
+    tol::Real=0,
+    maxiter::Int=500,
+    ⍰=false,
+    ⏩=false >)
+```
 
  Given a 1d array ``𝐏={P_1,...,P_k}`` of ``k`` positive definite matrices
  of [ℍVector type](@ref) or real positive definite diagonal matrices of
@@ -2067,7 +2082,7 @@ wasMean(𝐃::𝔻Vector;
  The following are more *<optional keyword arguments*>:
  - `init` is a matrix to be used as initialization for the mean. If no matrix is provided, the instance of [generalized means](@ref) with parameter ``p`` will be used.
  - `tol` is the tolerance for the convergence (see below).
- - `maxiter` is the maximum number of iterations allowed
+ - `maxiter` is the maximum number of iterations allowed.
  - if `⍰` is true, the convergence attained at each iteration is printed.
  - if ⏩=true the iterations are multi-threaded.
 
@@ -2348,7 +2363,7 @@ vecP(S::ℍ{T}) where T<:RealOrComplex =
  ``ς``  is a tangent vector of size ``n(n+1)/2``.
  The result of calling `matP(ς)` is then ``n⋅n`` matrix ``S``.
 
- **To Do**: This function needs to be rewritten more efficiently
+ **To Do**: This function needs to be rewritten more efficiently.
 
  ## Examples
     using PosDefManifold

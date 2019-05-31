@@ -74,9 +74,8 @@ end
 ## 1. Utilities
 #  ------------------------
 """
-    function typeofMatrix(array::Union{ AnyMatrix,
-                                        AnyMatrixVector,
-                                        AnyMatrixVector₂ })
+    function typeofMatrix(
+	array::Union{AnyMatrix, AnyMatrixVector, AnyMatrixVector₂})
 
  **alias**: `typeofMat`
 
@@ -118,9 +117,8 @@ typeofMat=typeofMatrix
 
 
 """
-    function typeofVector(array::Union{ AnyMatrix,
-										AnyMatrixVector,
-                                        AnyMatrixVector₂ })
+    function typeofVector(
+	array::Union{AnyMatrix, AnyMatrixVector, AnyMatrixVector₂})
 
  **alias**: `typeofVec`
 
@@ -341,7 +339,7 @@ tr1Msg="function tr1 in LinearAlgebra.jl of PosDefMaifold package: the trace of 
     (2) normalizeCol!(X::𝕄{T}, j::Int, by::Number)
     (3) normalizeCol!(X::𝕄{T}, range::UnitRange)
     (4) normalizeCol!(X::𝕄{T}, range::UnitRange, by::Number)
-                     for all above: where T<:RealOrComplex
+    for all above: where T<:RealOrComplex
 
  Given a `Matrix` type ``X`` comprised of real or complex elements,
  - (1) normalize the ``j^{th}`` column to unit norm
@@ -378,7 +376,6 @@ tr1Msg="function tr1 in LinearAlgebra.jl of PosDefMaifold package: the trace of 
     X=randn(ComplexF64, 10, 20)
     normalizeCol!(X, 3)                  # (1) normalize columns 3
     normalizeCol!(X, 3:6, (2.0 + 0.5im)) # (4) divide columns 3 to 5 by (2.0 + 0.5im)
-
 """
 function normalizeCol!(X::𝕄{T}, j::Int) where T<:RealOrComplex
     w=colNorm(X, j)
@@ -404,18 +401,17 @@ normalizeCol!(X::𝕄{T}, range::UnitRange, by::Number) where T<:RealOrComplex =
 
 """
 ```
-    (1) ispos(   λ::Vector{T};
-                <
-				tol::Real=0,
-				rev=true,
-				🔔=true,
-				msg="") 				where T<:Real
-				>
+    (1) ispos(λ::Vector{T};
+	<
+	tol::Real=0,
+	rev=true,
+	🔔=true,
+	msg="">)
 
-    (2) ispos(   Λ::𝔻{T};
-				< optional keyword arguments in (1) ) >
-										where T<:Real
+    (2) ispos(Λ::𝔻{T};
+	< same optional keyword arguments as in (1) > )
 
+	for all above: where T<:Real
 ```
 
  Return ``true`` if all numbers in (1) real vector ``λ`` or in (2) real `Diagonal`
@@ -483,7 +479,7 @@ ispos(Λ::Diagonal{T};
 """
     (1) colProd(X::Union{𝕄{T}, ℍ{T}}, j::Int, l::Int)
     (2) colProd(X::Union{𝕄{T}, ℍ{T}}, Y::Union{𝕄{T}, ℍ{T}}, j::Int, l::Int)
-               for all above: where T<:RealOrComplex
+    for all above: where T<:RealOrComplex
 
  (1) Given a real or complex `Matrix` or `Hermitian` matrix ``X``,
  return the dot product of the ``j^{th}`` and ``l^{th}`` columns, defined as,
@@ -555,7 +551,7 @@ colNorm(X::Union{𝕄{T}, ℍ{T}}, j::Int) where T<:RealOrComplex =
     (4) sumOfSqr(D::𝔻{T})
     (5) sumOfSqr(X::Union{𝕄{T}, ℍ{T}}, j::Int)
     (6) sumOfSqr(X::Union{𝕄{T}, ℍ{T}}, range::UnitRange)
-                 for (1)-(6) above: where T<:RealOrComplex
+    for (1)-(6) above: where T<:RealOrComplex
 
 **alias**: `ss`
 
@@ -637,7 +633,6 @@ ss=sumOfSqr
     X=randn(10, 20)
     sumDiag2=sumOfSqrDiag(X) # (1)
     sumDiag2=sumOfSqrDiag(𝔻(X)) # (2) 𝔻=LinearAlgebra.Diagonal
-
 """
 sumOfSqrDiag(X::𝕄{T}) where T<:RealOrComplex =
     𝚺(abs2(X[i, i]) for i=1:minimum(size(X)))
@@ -705,7 +700,7 @@ sst=sumOfSqrTril
     (2) tr(P::ℍ{T}, M::𝕄{T})
     (3) tr(D::𝔻{T}, H::Union{ℍ{T}, 𝕄{T}})
     (4) tr(H::Union{ℍ{T}, 𝕄{T}}, D::𝔻{T})
-          for all above: where T<:RealOrComplex
+    for all above: where T<:RealOrComplex
 
  Given (1) two `Hermitian` positive definite matrix ``P`` and ``Q``,
  return the trace of the product ``PQ``.
@@ -780,7 +775,6 @@ tr(H::Union{ℍ{T}, 𝕄{T}}, D::𝔻{T}) where T<:RealOrComplex = tr(D, H)
     (3) quadraticForm(v::Vector{T}, X::𝕄{T}, forceLower::Bool=false) where T<:Real
     (4) quadraticForm(v::Vector{S}, X::Union{𝕄{S}, ℍ{S}}) where S<:Complex
 
-
  **alias**: `qf`
 
  (1) Given a real vector ``v`` and a real `Hermitian` matrix ``P``,
@@ -820,7 +814,6 @@ tr(H::Union{ℍ{T}, 𝕄{T}}, D::𝔻{T}) where T<:RealOrComplex = tr(D, H)
     L=LowerTriangular(Matrix(P)) # or L=𝕃(Matrix(P))
     q2=quadraticForm(v, L)
     q1 ≈ q2 ? println(" ⭐ ") : println(" ⛔ ")
-
 """
 quadraticForm(v::Vector{T}, P::ℍ{T}) where T<:Real = qf(v, 𝕃(P))
 
@@ -904,12 +897,20 @@ end
  **See also**: [`DiagOfProd`](@ref), [`tr`](@ref).
 
  ## Examples
+
     using PosDefManifold
     P=randP(5) # use P=randP(ComplexF64, 5) for generating an Hermitian matrix
-    D=fDiag(inv, P, -1)   # diagonal matrix with the inverse of the first sub-diagonal of P
-    (Λ, U) = evd(P)       # Λ holds the eigenvalues of P, see evd
-    Δ=fDiag(log, Λ)       # diagonal matrix with the log of the eigenvalues
-    Δ=fDiag(x->x^2, Λ)    # using an anonymous function for the square of the eigenvalues
+
+	# diagonal matrix with the inverse of the first sub-diagonal of P
+    D=fDiag(inv, P, -1)
+
+	(Λ, U) = evd(P) # Λ holds the eigenvalues of P, see evd
+
+	# diagonal matrix with the log of the eigenvalues
+    Δ=fDiag(log, Λ)
+
+	# using an anonymous function for the square of the eigenvalues
+    Δ=fDiag(x->x^2, Λ)
 """
 fDiag(func::Function, X::𝔻{T}, k::Int=0) where T<:RealOrComplex = func.(X)
 
@@ -994,16 +995,17 @@ end # mgs function
 #  ------------------------------
 
 """
+```
 	(1) fVec(f::Function, 𝐏::AnyMatrixVector;
-		 	<
-			w::Vector=[],
-			✓w=false,
-			allocs=[])
-			>
+	<
+	w::Vector=[],
+	✓w=false,
+	allocs=[])
+	>
 
 	(2) fVec(f::Function, g::Function, 𝐏::AnyMatrixVector;
-			< optional keyword arguments in (1) ) >
-
+	< same optional keyword arguments in (1) >)
+```
 
  Given a 1d array ``𝐏={P_1,...,P_k}`` of ``k`` matrices
  of the [𝕄Vector type](@ref), [𝔻Vector type](@ref), [𝕃Vector type](@ref) or
@@ -1153,7 +1155,7 @@ end
  Method (2) is **multi-threaded**. See [Threads](@ref).
 
 !!! warning "Nota Bene"
- 	Types `ℍ`, `𝔻`, `𝕃` or `𝕄` are actually constructors, thus they may
+	Types `ℍ`, `𝔻`, `𝕃` or `𝕄` are actually constructors, thus they may
 	modify the result of the congruence(s). It is your responsibility to
 	pick the right argument `matrixType` in (1) and `vectorType` in (2).
 	For example, in (1) if ``B`` and ``P`` are `Hermitian`,
@@ -1409,16 +1411,14 @@ sqr(X::Union{𝕄{T}, 𝕃{T}, 𝔻{S}}) where T<:RealOrComplex where S<:Real = 
 
 """
     powerIterations(H::Union{ℍ{T}, 𝕄{T}}, q::Int;
-    				<
-					evalues=false,
-					tol::Real=0,
-					maxiter::Int=300,
-					⍰=false)
-					> 						where T<:RealOrComplex
+    <
+	evalues=false,
+	tol::Real=0,
+	maxiter::Int=300,
+	⍰=false>) where T<:RealOrComplex
 
     powerIterations(L::𝕃{S}, q::Int;
-    				< optional keyword arguments in (1) ) >
-											where S<:Real
+    < same optional keyword arguments in (1)>) where S<:Real
 
  **alias**: `powIter`
 
