@@ -945,8 +945,8 @@ spEmb=spectralEmbedding
 
  (1) Mean of two positive definite matrices, passed in arbitrary order as
  arguments ``P`` and ``Q``, using the specified `metric` of type
- [Metric::Enumerated type](@ref).
- The order is arbitrary as all metrics implemented in **PosDefManifold** are symmetric.
+ [Metric::Enumerated type](@ref). The order is arbitrary as all metrics
+ implemented in **PosDefManifold** are symmetric.
  This is the midpoint of the geodesic.
  For the weighted mean of two positive definite matrices use instead
  the [`geodesic`](@ref) function.
@@ -960,7 +960,7 @@ spEmb=spectralEmbedding
  with optional non-negative real weights ``w={w_1,...,w_k}`` and using the
  specified `metric`as in (1).
 
- (4) [Fréchet mean](@ref) of an 1d array ``𝐃`` of ``k`` positive definite
+ (5) [Fréchet mean](@ref) of an 1d array ``𝐃`` of ``k`` positive definite
  matrices ``𝐃={D_1,...,D_k}`` of [𝔻Vector type](@ref),
  with optional non-negative real weights ``w={w_1,...,w_k}`` and using the
  specified `metric`as in (1).
@@ -1047,7 +1047,6 @@ spEmb=spectralEmbedding
     Pset=randP(20, 160)
     @benchmark(mean(logEuclidean, Pset)) # single-threaded
     @benchmark(mean(logEuclidean, Pset; ⏩=true)) # multi-threaded
-
 
 """
 mean(metric::Metric, P::ℍ{T}, Q::ℍ{T}) where T<:RealOrComplex = geodesic(metric, P, Q, 0.5)
@@ -1167,7 +1166,7 @@ function mean(metric::Metric, 𝐃::𝔻Vector;
             else          return inv(𝚺(map(*, v, map(inv, 𝐃)))) end
         end
 
-    elseif metric in (logEuclidean, Fisher, logCholesky)
+    elseif metric in (logEuclidean, Fisher)
         if threaded
             if isempty(w) return exp(fVec(𝛍, log, 𝐃))
             else          return exp(fVec(𝚺, log, 𝐃; w=v)) end
@@ -1178,25 +1177,34 @@ function mean(metric::Metric, 𝐃::𝔻Vector;
 
     elseif metric == ChoEuclidean
         if threaded
-            if isempty(w) L=fVec(𝛍, sqrt, 𝐃)
-            else          L=fVec(𝚺, sqrt, 𝐃; w=v) end
+            if isempty(w) L=fVec(𝛍, √, 𝐃)
+            else          L=fVec(𝚺, √, 𝐃; w=v) end
         else
-            isempty(w) ? L = 𝛍(sqrt, 𝐃) : L = 𝚺(map(*, v, map(sqrt, 𝐃)))
+            isempty(w) ? L = 𝛍(√, 𝐃) : L = 𝚺(map(*, v, map(√, 𝐃)))
         end
         return L*L
+
+    elseif metric == logCholesky
+        if threaded
+            if isempty(w) return exp((fVec(𝛍, log, map(√, 𝐃))))^2
+            else          return exp((fVec(𝚺, log, map(√, 𝐃); w=v)))^2 end
+        else
+            if isempty(w) return exp((𝛍(log, map(√, 𝐃))))^2
+            else          return exp((𝚺(map(*, v, map(log, map(√, 𝐃))))))^2 end
+        end
 
     elseif metric == Jeffrey
         D=mean(Euclidean, 𝐃; w=w, ✓w=✓w, ⏩=⏩)
         return D*((inv(D)*mean(invEuclidean, 𝐃; w=w, ✓w=✓w, ⏩=⏩))^0.5)
 
     elseif metric == VonNeumann
-        @warn "function RiemannianGeometryP.mean and .geodesic not defined for metric $metric"
+        @warn "function RiemannianGeometry.mean and .geodesic not defined for metric $metric"
 
     elseif  metric == Wasserstein
         return generalizedMean(𝐃, 0.5; w=w, ✓w=✓w, ⏩=⏩)
 
     else
-        @error "in RiemannianGeometryP.mean function: the chosen 'metric' does not exist"
+        @error "in RiemannianGeometry.mean function: the chosen 'metric' does not exist"
     end # if metric
 end # function
 
@@ -1574,7 +1582,7 @@ gMean=geometricMean
     maxiter::Int=750,
     ⍰=false,
     ⏩=false,
-    adaptStepSize=false >)
+    adaptStepSize=true >)
 ```
 
  **alias**: `gpmean`
@@ -1590,7 +1598,7 @@ gMean=geometricMean
  This function implements the p-dispersion gradient descent
  algorithm with step-size ``ς`` (to be published), yielding iterations
 
-``G ←G^{1/2}\\textrm{exp}\\big(ς\\sum_{i=1}^{k}pw_iδ^2(G, P_i)^{p-1}\\textrm{log}(G^{-1/2} P_i G^{-1/2})\\big)G^{1/2}.``
+``G ←G^{1/2}\\textrm{exp}\\big(ς\\sum_{i=1}^{k}pδ^2(G, P_i)^{p-1}w_i\\textrm{log}(G^{-1/2} P_i G^{-1/2})\\big)G^{1/2}.``
 
 - if ``p=1`` this yields the geometric mean (implemented with fixed step-size in [`geometricMean`](@ref)).
 - if ``p=0.5`` this yields the geometric median.
@@ -1609,9 +1617,9 @@ gMean=geometricMean
  - `init` is a matrix to be used as initialization for the mean. If no matrix is provided, the [log Euclidean](@ref) mean will be used,
  - `tol` is the tolerance for the convergence (see below).
  - `maxiter` is the maximum number of iterations allowed.
- - if `⍰`=true, the convergence attained at each iteration is printed and a *warning* is printed if convergence is not attained.
+ - if `⍰`=true, the step-size and convergence attained at each iteration is printed. Also, a *warning* is printed if convergence is not attained.
  - if ⏩=true the iterations are multi-threaded (see below).
- - if `adaptStepSize`=true the step size ``ς`` for the gradient descent is adapted at each iteration (see below).
+ - if `adaptStepSize`=true (default) the step size ``ς`` for the gradient descent is adapted at each iteration (see below).
 
 !!! warning "Multi-Threading"
     [Multi-threading](https://docs.julialang.org/en/v1/manual/parallel-computing/#Multi-Threading-(Experimental)-1)
@@ -1622,7 +1630,8 @@ gMean=geometricMean
 !!! note "Nota Bene"
     If the algorithm diverges and `⍰` is true a **warning** is printed
     indicating the iteration when this happened. This algorithm may temporary
-    diverge, still reach convergence.
+    diverge, still reach convergence. Overall, while all other iterative
+    algorithms implemented in **PosDefMaifold** are very stable, this is not.
 
     The smaller the parameter ``p`` is, the slower and less likely the
     convergence is. If the algorithm does not converge, try increasing ``p``,
@@ -1631,7 +1640,7 @@ gMean=geometricMean
 
     If `adaptStepSize` is true (default) the step-size ``ς`` is adapted at
     each iteration, otherwise a fixed step size ``ς=1`` is used.
-    Adapting the step size in general speeds up convergence.
+    Adapting the step size in general hastens convergence.
 
     ``tol`` defaults to the square root of `Base.eps` of the nearest
     real type of data input ``𝐏``. This corresponds to requiring the
