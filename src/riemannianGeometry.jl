@@ -36,43 +36,6 @@ function _getWeights(w::Vector, ✓w::Bool)
 end
 
 
-# create t=nthreads() ranges partitioning the columns of a lower triangular
-# matrix of dimensions nxn {strictly lower if strictlyLower=true}
-# in such a way that the t ranges comprise a number of elements of the matrix
-# as similar as possible to each other.
-# The long line in the function is the zero of the derivative of the cost
-# function [n(x+1)+x(x+1)/2-n(n+1)/2t]²
-# { [n(x+1)+x(x+1)/2-n(n+1)/2t]² if the matrix is strictly lower triangular },
-# where n(x+1)+x(x+1)/2 {nx+x(x+1)/2} is the number of elements in the
-# first x columns and n(n+1)/2t {n(n-1)/2t} is the average number of
-# elements in t partitions.
-# Such derivative is used iteratively to find all the t ranges
-# This function returns an array of t ranges indexing the columns of the partitions.
-# Example: _partitionTril4threads(20) # using t=4 threads
-# outputs ranges 1:2, 3:5, 6:10, 11:20, comprising, respectively
-# 39, 51, 54, 55 elements of a 20x20 lower triangular matrix,
-# which has 190 elements (expected number of elements per partition=190/4=47.5)
-# Usage: looping over columns of a trianguar matrix L of dimension nxn:
-# ranges=_partitionTril4threads(n)
-# Threads.@threads for r=1:length(ranges) for k in ranges[r] ... end end
-function _partitionTril4threads(n::Int, strictlyLower::Bool=false)
-    thr=nthreads()
-    n<thr ? thr = n : nothing
-    ranges=Vector(undef, thr)
-    (a, b, i, k) = 4n^2, 4n, 1, 0
-    strictlyLower ? b = -b : nothing
-    for r=1:thr-1
-        t = thr-r+1
-        j = Int(round(max(-((sqrt((a+b+1)t^2+(-a-b)t)+(-2n+1)t)/(2t)), 1)))
-        k += j
-        ranges[r] = i:k
-        i = k+1
-    end
-    ranges[thr] = i:n
-    return ranges
-end
-
-
 
 # -----------------------------------------------------------
 # 1. Geodesic Equations
@@ -523,14 +486,19 @@ function distanceSqrMat(type::Type{T}, metric::Metric, 𝐏::ℍVector;
                          ⏩=false) where T<:AbstractFloat
    k, n, thr = dim(𝐏, 1), dim(𝐏, 2), nthreads()
    △=𝕃{type}(diagm(0 => zeros(k)))
-   ⏩ && k>=thr*2 && thr > 1 ? threaded=true : threaded=false
-   if threaded R=_partitionTril4threads(k, true); m=length(R) end # ranges
+   ⏩ && (k+2)>=thr && thr > 1 ? threaded=true : threaded=false
+   #if threaded R=[(i, j) for j=1:k, i=1:k if i<j]; m=length(R) end # ranges
+   if threaded
+      R=[j for j=1:k, i=1:k if i<j]
+      C=[i for j=1:k, i=1:k if i<j]
+      m=length(R)
+   end # ranges
 
    if     metric == invEuclidean
        if threaded
            𝐏𝓲=ℍVector(undef, k)
            @threads for j=1:k 𝐏𝓲[j]=inv(𝐏[j]) end
-           @threads for r=1:m for j in R[r], i=j+1:k △[i, j]=ss(ℍ(𝐏𝓲[i] - 𝐏𝓲[j])) end end
+           @threads for i=1:m △[R[i], C[i]]=ss(ℍ(𝐏𝓲[R[i]] - 𝐏𝓲[C[i]])) end
        else
            𝐏𝓲=map(inv, 𝐏)
            for j=1:k-1, i=j+1:k △[i, j]=ss(ℍ(𝐏𝓲[i] - 𝐏𝓲[j]))  end
@@ -540,7 +508,7 @@ function distanceSqrMat(type::Type{T}, metric::Metric, 𝐏::ℍVector;
        if threaded
            𝐏𝓵=ℍVector(undef, k)
            @threads for j=1:k 𝐏𝓵[j]=ℍ(log(𝐏[j])) end
-           @threads for r=1:m for j in R[r], i=j+1:k △[i, j]=ss(ℍ(𝐏𝓵[i] - 𝐏𝓵[j])) end end
+           @threads for i=1:m △[R[i], C[i]]=ss(ℍ(𝐏𝓵[R[i]] - 𝐏𝓵[C[i]])) end
        else
            𝐏𝓵=map(log, 𝐏)
            for j=1:k-1, i=j+1:k △[i, j]=ss(ℍ(𝐏𝓵[i] - 𝐏𝓵[j]))  end
@@ -550,7 +518,7 @@ function distanceSqrMat(type::Type{T}, metric::Metric, 𝐏::ℍVector;
        if threaded
            𝐏L=𝕃Vector(undef, k)
            @threads for j=1:k 𝐏L[j]=choL(𝐏[j]) end
-           @threads for r=1:m for j in R[r], i=j+1:k △[i, j]=ss(𝐏L[i] - 𝐏L[j]) end end
+           @threads for i=1:m △[R[i], C[i]]=ss(𝐏L[R[i]] - 𝐏L[C[i]]) end
        else
            𝐏L=map(choL, 𝐏)
            for j=1:k-1, i=j+1:k △[i, j]=ss(𝐏L[i] - 𝐏L[j])  end
@@ -560,7 +528,7 @@ function distanceSqrMat(type::Type{T}, metric::Metric, 𝐏::ℍVector;
        if threaded
            𝐏L=𝕃Vector(undef, k)
            @threads for j=1:k 𝐏L[j]=choL(𝐏[j]) end
-           @threads for r=1:m for j in R[r], i=j+1:k △[i, j]=sst(tril(𝐏L[i], -1)-tril(𝐏L[j], -1), -1) + ssd(𝑓𝔻(log, 𝐏L[i])-𝑓𝔻(log, 𝐏L[j])) end end
+           @threads for i=1:m △[R[i], C[i]]=sst(tril(𝐏L[R[i]], -1)-tril(𝐏L[C[i]], -1), -1) + ssd(𝑓𝔻(log, 𝐏L[R[i]])-𝑓𝔻(log, 𝐏L[C[i]])) end
        else
            𝐏L=map(choL, 𝐏)
            for j=1:k-1, i=j+1:k △[i, j]=sst(tril(𝐏L[i], -1)-tril(𝐏L[j], -1), -1) + ssd(𝑓𝔻(log, 𝐏L[i])-𝑓𝔻(log, 𝐏L[j])) end
@@ -570,7 +538,7 @@ function distanceSqrMat(type::Type{T}, metric::Metric, 𝐏::ℍVector;
        if threaded
            𝐏𝓲=ℍVector(undef, k)
            @threads for j=1:k 𝐏𝓲[j]=inv(𝐏[j]) end
-           @threads for r=1:m for j in R[r], i=j+1:k △[i, j]=0.5(tr(𝐏𝓲[j], 𝐏[i]) + tr(𝐏𝓲[i], 𝐏[j])) - n end end
+           @threads for i=1:m △[R[i], C[i]]=0.5(tr(𝐏𝓲[C[i]], 𝐏[R[i]]) + tr(𝐏𝓲[R[i]], 𝐏[C[i]])) - n end
        else
            𝐏𝓲=map(inv, 𝐏)
            for j=1:k-1, i=j+1:k △[i, j]=0.5(tr(𝐏𝓲[j], 𝐏[i]) + tr(𝐏𝓲[i], 𝐏[j])) - n end
@@ -581,7 +549,7 @@ function distanceSqrMat(type::Type{T}, metric::Metric, 𝐏::ℍVector;
            𝐏𝓵=ℍVector(undef, k)
            v=Vector(undef, k)
            @threads for j=1:k 𝐏𝓵[j]=ℍ(log(𝐏[j])); v[j]=tr(𝐏[j], 𝐏𝓵[j]) end
-           @threads for r=1:m for j in R[r], i=j+1:k △[i, j]=0.5*real(v[i]+v[j]-tr(𝐏[i], 𝐏𝓵[j])-tr(𝐏[j], 𝐏𝓵[i])) end end
+           @threads for i=1:m △[R[i], C[i]]=0.5*real(v[R[i]]+v[C[i]]-tr(𝐏[R[i]], 𝐏𝓵[C[i]])-tr(𝐏[C[i]], 𝐏𝓵[R[i]])) end
        else
            𝐏𝓵=[ℍ(log(P)) for P in 𝐏]
            v=[tr(𝐏[i], 𝐏𝓵[i]) for i=1:length(𝐏)]
@@ -592,7 +560,7 @@ function distanceSqrMat(type::Type{T}, metric::Metric, 𝐏::ℍVector;
        if threaded
            𝐏½=ℍVector(undef, k)
            @threads for j=1:k 𝐏½[j]=sqrt(𝐏[j]) end
-           @threads for r=1:m for j in R[r], i=j+1:k △[i, j]=tr(𝐏[i]) + tr(𝐏[j]) -2tr(sqrt(ℍ(𝐏½[i] * 𝐏[j] * 𝐏½[i]))) end end
+           @threads for i=1:m △[R[i], C[i]]=tr(𝐏[R[i]]) + tr(𝐏[C[i]]) -2tr(sqrt(ℍ(𝐏½[R[i]] * 𝐏[C[i]] * 𝐏½[R[i]]))) end
        else
            𝐏½=map(sqrt, 𝐏)
            for j=1:k-1, i=j+1:k △[i, j]=tr(𝐏[i]) + tr(𝐏[j]) -2tr(sqrt(ℍ(𝐏½[i] * 𝐏[j] * 𝐏½[i]))) end
@@ -600,7 +568,7 @@ function distanceSqrMat(type::Type{T}, metric::Metric, 𝐏::ℍVector;
 
    elseif metric in (Euclidean, Fisher, logdet0)
        if threaded
-           @threads for r=1:m for j in R[r], i=j+1:k △[i, j]=distanceSqr(metric, 𝐏[i], 𝐏[j]) end end
+           @threads for i=1:m △[R[i], C[i]]=distanceSqr(metric, 𝐏[R[i]], 𝐏[C[i]]) end
        else
            for j in 1:k-1, i in j+1:k △[i, j]=distanceSqr(metric, 𝐏[i], 𝐏[j])  end
        end
@@ -1379,9 +1347,9 @@ function generalizedMean(𝐏::Union{ℍVector, 𝔻Vector}, p::Real;
                          ✓w=true,
                          ⏩=false)
     𝕋=typeofMatrix(𝐏)
-    if     p == -1 return mean(invEuclidean, 𝐏; w=w, ✓w=✓w, ⏩=⏩)
-    elseif p ==  0 return mean(logEuclidean, 𝐏; w=w, ✓w=✓w, ⏩=⏩)
-    elseif p ==  1 return mean(Euclidean, 𝐏;    w=w, ✓w=✓w, ⏩=⏩)
+    if     p ≈ -1 return mean(invEuclidean, 𝐏; w=w, ✓w=✓w, ⏩=⏩)
+    elseif p ≈  0 return mean(logEuclidean, 𝐏; w=w, ✓w=✓w, ⏩=⏩)
+    elseif p ≈  1 return mean(Euclidean, 𝐏;    w=w, ✓w=✓w, ⏩=⏩)
     else
         k, n, thr = dim(𝐏, 1), dim(𝐏, 2), nthreads()
         ⏩ && k>=thr*4 && thr > 1 ? threaded=true : threaded=false
@@ -1424,9 +1392,9 @@ end # function
 ``\\sum_{i=1}^{k}w_i\\textrm{log}\\big(G^{-1/2} P_i G^{-1/2}\\big)=0.``
 
  For estimating it, this function implements the well-known gradient descent
- algorithm, yielding iterations
+ algorithm, but with an exponential decaying step size ``ς``, yielding iterations
 
-``G ←G^{1/2}\\textrm{exp}\\big(\\sum_{i=1}^{k}w_i\\textrm{log}(G^{-1/2} P_i G^{-1/2})\\big)G^{1/2}.``
+``G ←G^{1/2}\\textrm{exp}\\big(ς\\sum_{i=1}^{k}w_i\\textrm{log}(G^{-1/2} P_i G^{-1/2})\\big)G^{1/2}.``
 
  If you don't pass a weight vector with *<optional keyword argument>* ``w``,
  return the *unweighted geometric mean*.
@@ -1441,7 +1409,7 @@ end # function
  - `init` is a matrix to be used as initialization for the mean. If no matrix is provided, the [log Euclidean](@ref) mean will be used,
  - `tol` is the tolerance for the convergence (see below).
  - `maxiter` is the maximum number of iterations allowed
- - if `⍰`=true, the convergence attained at each iteration is printed and a *warning* is printed if convergence is not attained.
+ - if `⍰`=true, the convergence attained at each iteration and the step size ``ς`` is printed. Also, a *warning* is printed if convergence is not attained.
  - if ⏩=true the iterations are multi-threaded (see below).
 
  If the input is a 1d array of ``k`` real positive definite diagonal matrices
@@ -1460,6 +1428,12 @@ end # function
     In normal circumstances this algorithm converges monothonically.
     If the algorithm diverges and `⍰` is true a **warning** is printed
     indicating the iteration when this happened.
+
+    The exponential decaying step size features a faster convergence rate
+    as compared to the fixed step size ``ς=1`` that is usually adopted.
+    The decaying rate is inversely proportional to `maxiter`, thus,
+    increase/decrease `maxiter` in order to set a slower/faster
+    decaying rate. `maxiter` should not be set too low though.
 
     ``tol`` defaults to the square root of `Base.eps` of the nearest
     real type of data input ``𝐏``. This corresponds to requiring the
@@ -1490,13 +1464,24 @@ end # function
 
     # now suppose Pset has changed a bit, initialize with G to hasten convergence
     Pset[1]=ℍ(Pset[1]+(randP(3)/100))
-    G, iter, conv = geometricMean(Pset; w=weights, ✓w=false, ⍰=true, init=G)
+    G, iter, conv = geometricMean(Pset; w=weights, ✓w=true, ⍰=true, init=G)
 
     # run multi-threaded when the number of matrices is high
     using BenchmarkTools
-    Pset=randP(20, 160)
+    k=160
+    Pset=randP(20, k)
     @benchmark(geometricMean(Pset)) # single-threaded
     @benchmark(geometricMean(Pset; ⏩=true)) # multi-threaded
+
+    # show the mean and the input points using spectral embedding
+    using Plots
+    k=80
+    Pset=randP(20, k)
+    G, iter, conv = geometricMean(Pset; ⏩=true)
+    push!(Pset, G)
+    Λ, U, iter, conv=spectralEmbedding(Fisher, Pset, 2; ⍰=true)
+    plot(U[1:k, 1], U[1:k, 2], seriestype=:scatter, title="Spectral Embedding", label="Pset")
+    plot!(U[k+1:k+1, 1], U[k+1:k+1, 2], seriestype=:scatter, label="mean")
 
 """
 function geometricMean( 𝐏::ℍVector;
@@ -1504,48 +1489,39 @@ function geometricMean( 𝐏::ℍVector;
                         ✓w=true,
                         init=nothing,
                         tol::Real=0,
-                        maxiter::Int=500,
+                        maxiter::Int=200,
                         ⍰=false,
                         ⏩=false)
 
     k, n, type, thr = dim(𝐏, 1), dim(𝐏, 2), eltype(𝐏[1]), nthreads()
-    n², iter, conv, oldconv, converged = n^2, 1, 0., maxpos, false
+    n², iter, conv, oldconv, converged, ς = n^2, 1, 0., maxpos, false, 1.
     ⏩ && k>=thr*4 && thr > 1 ? threaded=true : threaded=false
-    isempty(w) ? v=[] : v = _getWeights(w, ✓w)
-    init == nothing ? M = mean(logEuclidean, 𝐏; w=v, ✓w=false, ⏩=⏩) : M = ℍ(init)
     tol==0 ? tolerance = √eps(real(type)) : tolerance = tol
-    💡 = similar(M, type)
-    if threaded 𝐐 = similar(𝐏) end
+
     ⍰ && println("")
     ⍰ && threaded && @info("Iterating multi-threaded geometricMean Fixed-Point...")
     ⍰ && !threaded && @info("Iterating geometricMean Fixed-Point...")
 
+    isempty(w) ? v=[] : v = _getWeights(w, ✓w)
+    init == nothing ? M = mean(logEuclidean, 𝐏; w=v, ✓w=false, ⏩=⏩) : M = ℍ(init)
+    💡 = similar(M, type)
+    threaded ? 𝐐 = 𝕄Vector(repeat([𝐏[1]], thr)) : nothing
+    c1(M⁻½::ℍ, 𝐏::ℍVector) = cong(M⁻½, 𝐏, ℍVector)
+    c2(M⁻½::ℍ, P::ℍ) = cong(M⁻½, P, ℍ)
+
+    # M -< M½ { exp[ς( w_i{sum(i=1 to k) log(M⁻½ 𝐏[i] M⁻½)} )] } M½
     while true
         M½, M⁻½ = pow(M, 0.5, -0.5)
-        # M -< M½ {  exp[epsilon( 1/n{sum(i=1 to k) log(M⁻½ 𝐏[i] M⁻½)} )] } M½
         if threaded
-            if isempty(w)
-                @threads for i=1:k 𝐐[i] = log(ℍ(M⁻½*𝐏[i]*M⁻½)) end
-                ∇ = fVec(𝛍, 𝐐)
-                💡 = ℍ(M½*exp(∇)*M½)
-            else
-                @threads for i=1:k 𝐐[i] = v[i] * log(ℍ(M⁻½*𝐏[i]*M⁻½)) end
-                ∇ = fVec(𝚺, 𝐐)
-                💡 = ℍ(M½*exp(∇)*M½)
-            end
+            isempty(w) ? ∇ = fVec(𝛍, log, c1(M⁻½, 𝐏), allocs=𝐐) : ∇ = fVec(𝚺, log, c1(M⁻½, 𝐏), w=v, ✓w=false, allocs=𝐐)
         else
-            if isempty(w)
-                ∇ = ℍ(𝛍(log(ℍ(M⁻½*P*M⁻½)) for P in 𝐏))
-                💡 = ℍ(M½*exp(∇)*M½)
-            else
-                ∇ = ℍ(𝚺(ω * log(ℍ(M⁻½*P*M⁻½)) for (ω, P) in zip(v, 𝐏)))
-                💡 = ℍ(M½*exp(∇)*M½)
-            end
+            isempty(w) ? ∇ = ℍ(𝛍(log(c2(M⁻½, P)) for P in 𝐏)) : ∇ = ℍ(𝚺(ω * log(c2(M⁻½, P)) for (ω, P) in zip(v, 𝐏)))
         end
+        💡 = ℍ(M½*exp(ς*∇)*M½)
 
-        #conv = √norm(💡-M)/norm(M)
         conv = norm(∇)/n²
-        ⍰ && println("iteration: ", iter, "; convergence: ", conv)
+        ς = exp(-ℯ * golden * iter / maxiter)
+        ⍰ && println("iteration: ", iter, "; convergence: ", conv, "; ς: ", round(ς * 1000)/1000)
         (diverging = conv > oldconv) && ⍰ && @warn("geometricMean diverged at:", iter)
         (overRun = iter == maxiter) && @warn("geometricMean reached the max number of iterations before convergence:", iter)
         (converged = conv <= tolerance) || overRun==true ? break : M = 💡
@@ -1557,6 +1533,7 @@ function geometricMean( 𝐏::ℍVector;
     ⍰ && println("")
     return (💡, iter, conv)
 end
+
 
 
 geometricMean(𝐃::𝔻Vector;
@@ -1666,7 +1643,7 @@ gMean=geometricMean
 
     # change p to observe how the convergence behavior changes accordingly
     # Get the golden geometric-p mean (default)
-    H, iter2, conv2 = geometricpMean(Pset, p, ⍰=true)
+    H, iter2, conv2 = geometricpMean(Pset, ⍰=true)
     # Get the geometric median
     H, iter2, conv2 = geometricpMean(Pset, 0.5, ⍰=true)
 
