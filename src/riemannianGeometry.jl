@@ -1,5 +1,5 @@
 #    Unit riemannianGeometry.jl, part of PosDefManifold Package for julia language
-#    v 0.3.1 - last update 30th of Mai 2019
+#    v 0.3.1 - last update 10th of Juin 2019
 #
 #    MIT License
 #    Copyright (c) 2019, Marco Congedo, CNRS, Grenobe, France:
@@ -21,7 +21,7 @@
 
 
 # -----------------------------------------------------------
-# 0. Internal Functions
+# 0. Internal Functions (not exported)
 #    By convention their name begin with underscore char
 # -----------------------------------------------------------
 
@@ -35,7 +35,45 @@ function _getWeights(w::Vector, ✓w::Bool)
     end # if
 end
 
+# Set variables used by all iterative algorithms :
+# k     = number of input matrices in `𝐏`
+# n     = dimension of these matrices
+# type  = type of the elements of these matrices
+# thr   = number of threads set in Julia for multi-threading
+# n²    = `n`²
+# iter  = count of iterations. It is just initialized to 1
+# conv  = convergence attained at each teration. It is just initialized to 0
+# oldconv = convergence attained at last iteration. It is just initiaized to maxpos=1e15
+# converged = true if the algorithm has converged. It is just initialized to false
+# ς     = step size for gradient descent. It is not used by all algorithms. It is just initialized to 1
+# threaded = it is set to true if `k`>=`thr`*4 && `thr` > 1, false otherwise
+# tolerance = tolerance for convergence. It depends on `type`. See help file of the concerned iterative algorithm
+# v = vector of weights, either empty or initialized by function `_getWeights(w::Vector, ✓w::Bool)`
+function _setVar_IterAlg(𝐏::Union{ℍVector, 𝔻Vector}, w::Vector, ✓w::Bool, tol::Real, ⏩::Bool)
+    k, n, type, thr = dim(𝐏, 1), dim(𝐏, 2), eltype(𝐏[1]), nthreads()
+    n², iter, conv, oldconv, converged, ς = n^2, 1, 0., maxpos, false, 1.
+    ⏩ && k>=thr*4 && thr > 1 ? threaded=true : threaded=false
+    tol==0 ? tolerance = √eps(real(type)) : tolerance = tol
+    isempty(w) ? v=[] : v = _getWeights(w, ✓w)
+    return (k, n, type, thr, n², iter, conv, oldconv, converged, ς, threaded, tolerance, v)
+end
 
+# used by all iterative algorithms.
+# Print info to the user at the beginning of the algorithm if `⍰` is true
+function _giveStartInfo_IterAlg(threaded::Bool, ⍰::Bool, msg::String)
+    if ⍰
+        println("")
+        threaded && @info("Iterating multi-threaded "*msg*"...")
+        !threaded && @info("Iterating "*msg*"...")
+    end
+end
+
+# used by all iterative algorithms.
+# print info to the user at the end of the algorithm if `⍰` is true
+function _giveEndInfo_IterAlg(converged::Bool, ⍰::Bool)
+    ⍰ ? (converged ? @info("Convergence has been attained.\n") : @warn("Convergence has not been attained.")) : nothing
+    ⍰ && println("")
+end
 
 # -----------------------------------------------------------
 # 1. Geodesic Equations
@@ -115,7 +153,7 @@ function geodesic(metric::Metric, P::ℍ{T}, Q::ℍ{T}, a::Real) where T<:RealOr
     if a ≈ 1 return Q end
     b = 1-a
 
-    if      metric==Euclidean    return P*b + Q*a
+    if      metric==Euclidean    return ℍ(P*b + Q*a)
 
     elseif  metric==invEuclidean return inv( ℍ(inv(P)b + inv(Q)a) )
 
@@ -125,7 +163,7 @@ function geodesic(metric::Metric, P::ℍ{T}, Q::ℍ{T}, a::Real) where T<:RealOr
             P½, P⁻½ = pow(P, 0.5, -0.5)
             return ℍ( P½ * (P⁻½ * Q * P⁻½)^a * P½ )
 
-    elseif  metric in (logdet0, Jeffrey)
+    elseif  metric ∈ (logdet0, Jeffrey)
             return mean(metric, ℍVector([P, Q]), w=[b, a], ✓w=false)
 
     elseif  metric==VonNeumann
@@ -162,10 +200,10 @@ function geodesic(metric::Metric, D::𝔻{T}, E::𝔻{T}, a::Real) where T<:Real
 
     elseif  metric==invEuclidean return inv( inv(D)b + inv(E)a )
 
-    elseif  metric in (Fisher,
+    elseif  metric ∈ (Fisher,
                  logEuclidean)   return exp( log(D)b + log(E)a )
 
-    elseif  metric in (logdet0,
+    elseif  metric ∈ (logdet0,
                        Jeffrey)  return mean(metric, 𝔻Vector([D, E]), w=[b, a], ✓w=false)
 
     elseif  metric==VonNeumann
@@ -370,7 +408,7 @@ function distanceSqr(metric::Metric, D::𝔻{T}, E::𝔻{T}) where T<:Real
 
     elseif metric==invEuclidean return  max(z, ssd(inv(D) - inv(E)))
 
-    elseif metric in (Fisher,
+    elseif metric ∈ (Fisher,
                  logEuclidean)  return  max(z, ssd(log(D) - log(E)))
 
     elseif metric==logdet0      return  max(z, logdet(0.5*(D + E)) - 0.5*logdet(D * E))
@@ -453,10 +491,9 @@ distance(metric::Metric, D::𝔻{T}, E::𝔻{T}) where T<:Real = √(distance²(
  <optional keyword arguments>:
  - if ⏩=true the computation of inter-distances is multi-threaded.
 
-!!! warning "Multi-Threading"
+!!! note "Nota Bene"
     [Multi-threading](https://docs.julialang.org/en/v1/manual/parallel-computing/#Multi-Threading-(Experimental)-1)
-    is still experimental in julia.
-    Multi-threading is automatically disabled if the number of threads
+    is automatically disabled if the number of threads
     Julia is instructed to use is ``<2`` or ``<2k``. See [Threads](@ref).
 
  **See**: [distance](@ref).
@@ -566,7 +603,7 @@ function distanceSqrMat(type::Type{T}, metric::Metric, 𝐏::ℍVector;
            for j=1:k-1, i=j+1:k △[i, j]=tr(𝐏[i]) + tr(𝐏[j]) -2tr(sqrt(ℍ(𝐏½[i] * 𝐏[j] * 𝐏½[i]))) end
        end
 
-   elseif metric in (Euclidean, Fisher, logdet0)
+   elseif metric ∈ (Euclidean, Fisher, logdet0)
        if threaded
            @threads for i=1:m △[R[i], C[i]]=distanceSqr(metric, 𝐏[R[i]], 𝐏[C[i]]) end
        else
@@ -650,30 +687,55 @@ distanceMat(metric::Metric, 𝐏::ℍVector;
 
 
 """
-    laplacian(Δ²:𝕃{S}) where S<:Real
+    laplacian(Δ²::𝕃{S}, epsilon::Real=0;
+              <densityInvariant=false>) where S<:Real
 
  Given a `LowerTriangular` matrix of squared inter-distances ``Δ^2``,
- return the lower triangular part of the *normalized Laplacian*.
+ return the lower triangular part of the so-called
+ *normalized Laplacian* or *density-invariant normalized Laplacian*,
+ which in both cases is a symmetric Laplacian.
  The elements of the Laplacian are of the same type as the elements of ``Δ^2``.
  The result is a `LowerTriangular` matrix.
 
- First, a [Gaussian radial basis functions](https://bit.ly/1HVyf55)
+ The definition of Laplacian given by Lafon (2004)[🎓](@ref) is implemented:
+
+ First, a [Gaussian radial basis functions](https://bit.ly/1HVyf55),
+ known as *Gaussian kernel* or *heat kernel*,
  is applied to all elements of ``Δ^2``, such as
 
- ``W_{ij} = exp(\\frac{\\displaystyle{-Δ^2_{ij}}}{\\displaystyle{ε}})``,
+ ``W_{ij} = exp\\bigg(\\frac{\\displaystyle{-Δ^2_{ij}}}{\\displaystyle{2ε}}\\bigg)``,
 
-  where ``ε`` is the Gaussian scale parameter chosen automatically
-  as the median of the elements ``Δ^2_{ij}``.
+  where ``ε`` is the *bandwidth* of the kernel.
 
-  Finally, the normalized Laplacian is defined as
+  If <optional keyword argument> `densityInvariant=true` is used,
+  then the density-invariant transformation is applied
+
+   ``W <- E^{-1}WE^{-1}``
+
+  where ``E`` is the diagonal matrix holding on the main diagonal
+  the sum of the rows (or columns) of ``W``.
+
+  Finally, the normalized Laplacian (density-invariant or not) is defined as
 
  ``Ω = D^{-1/2}WD^{-1/2}``,
 
   where ``D`` is the diagonal matrix holding on the main diagonal
   the sum of the rows (or columns) of ``W``.
 
+  If you do not provide argument `epsilon`, the bandwidth ``ε`` is set to the
+  median of the elements of squared distance matrix ``Δ^2_{ij}``.
+  Another educated guess is the dimension of the original data, that is,
+  the data that has been used to compute the squared distance matrix.
+  For positive definite matrices this is ``n(n-1)/2``, where ``n`` is the
+  dimension of the matrices. Still another is the dimension of the ensuing
+  [`spectralEmbedding`](@ref) space.
+  Keep in mind that by tuning the `epsilon` parameter
+  (which must be positive) you can control both the rate of compression of the
+  embedding space and the spread of points in the embedding space.
+  See Coifman et *al.* (2008)[🎓](@ref) for a discussion on ``ε``.
+
 !!! note "Nota Bene"
-    The normalized Laplacian as here defined can be requested for any
+    The Laplacian as here defined can be requested for any
     input matrix of squared inter-distances, for example,
     those obtained on scalars or on vectors using appropriate metrics.
     In any case, only the lower triangular part of the Laplacian is
@@ -688,24 +750,46 @@ distanceMat(metric::Metric, 𝐏::ℍVector;
     Δ²=distanceSqrMat(Fisher, Pset)
     Ω=laplacian(Δ²)
 
- """
-function laplacian(Δ²::𝕃{T}) where T<:Real
+    # density-invariant Laplacian
+    Ω=laplacian(Δ²; densityInvariant=true)
+
+    # increase the bandwidth
     r=size(Δ², 1)
-    epsilon=median([Δ²[i, j] for j=1:r-1 for i=j+1:r]) # use geometric mean instead
-    Ω=𝕃{T}(diagm(0 => ones(r)))
-    for j=1:r-1, i=j+1:r Ω[i, j]=exp(-Δ²[i, j]/epsilon)  end
-    # 1/sqrt of the row (or col) sum of L+L'-diag(L) using only L
-    D=Vector{T}(undef, r)
-    for i=1:r
-        D[i]=T(0)
-        for j=1:i   D[i] += Ω[i, j] end
-        for l=i+1:r D[i] += Ω[l, i] end # conj(L[l, i]) for complex matrices
-        D[i]=1/√D[i]
-    end
-    # D * (L+L'-diag(L))* D using only L
-    for j=1:r, i=j:r Ω[i, j]*=D[i]*D[j] end
-    return Ω # see laplacianEigenMaps
-end
+    myεFactor=0.1
+    med=Statistics.median([Δ²[i, j] for j=1:r-1 for i=j+1:r])
+    ε=2*myεFactor*med
+    Ω=laplacian(Δ², ε; densityInvariant=true)
+
+ """
+ function laplacian(Δ²::𝕃{T}, epsilon::Real=0;
+                    densityInvariant=false) where T<:Real
+
+     # vector of sum of columns of W, using only the lower triangle Ω of W
+     function sumCol(Ω::𝕃{T}, r::Int) where T<:Real
+         D=zeros(T, r)
+         for i=1:r
+             for j=1:i   D[i] += Ω[i, j] end
+             for l=i+1:r D[i] += Ω[l, i] end # conj(L[l, i]) for complex matrices
+         end
+         return D
+     end
+
+     # product DWD with D diagonal, using only the lower triangle Ω of W
+     # overwrite Ω wirg the lower triangle of the result
+     DWD!(D::Vector{T}, Ω::𝕃{T}, r::Int) where T<:Real =
+                 for j=1:r, i=j:r Ω[i, j]*=D[i]*D[j] end
+
+     r=size(Δ², 1)
+
+     # Apply a Gaussian (heat) kernel
+     epsilon≈0 ? ε=2*Statistics.median([Δ²[i, j] for j=1:r-1 for i=j+1:r]) : ε=2*epsilon
+     Ω=𝕃{T}(diagm(0 => ones(r)))
+     for j=1:r-1, i=j+1:r Ω[i, j]=exp(-Δ²[i, j]/ε) end
+
+     if densityInvariant DWD!(inv.(sumCol(Ω, r)), Ω, r) end
+     DWD!(sqrt.(inv.(sumCol(Ω, r))), Ω, r)
+     return Ω # see laplacianEigenMaps
+ end
 
 
 """
@@ -719,27 +803,32 @@ end
 
  **alias**: `laplacianEM`
 
- Given the lower triangular part of a normalized Laplacian ``Ω``
+ Given the lower triangular part of a Laplacian ``Ω``
  (see [`laplacian`](@ref) ) return the *eigen maps* in ``q`` dimensions,
- i.e., the ``q`` eigenvectors of
- the normalized Laplacian associated with the largest ``q``
+ i.e., the ``q`` eigenvectors of the Laplacian associated with the largest ``q``
  eigenvalues, excluding the first (which is always equal to 1.0).
- The eigenvectors are of the same type as ``Ω``.
+ The eigenvectors are of the same type as ``Ω``. They are all divided
+ element-wise by the first eigenvector (see Lafon, 2004[🎓](@ref)).
 
- The eigenvectors of the normalized Laplacian are computed by the
+ The eigenvectors of the Laplacian are computed by the
  power iterations+modified Gram-Schmidt method (see [`powerIterations`](@ref)),
  allowing the execution of this function for Laplacian matrices of very large size.
 
  Return the 4-tuple ``(Λ, U, iterations, convergence)``, where:
  - ``Λ`` is a ``q⋅q`` diagonal matrix holding on diagonal the eigenvalues corresponding to the ``q`` dimensions of the Laplacian eigen maps,
- - ``U`` holds in columns the eigen maps, that is, the ``q`` eigenvectors,
+ - ``U`` holds in columns the ``q`` eigenvectors holding the ``q`` coordinates of the points in the embedding space,
  - ``iterations`` is the number of iterations executed by the power method,
  - ``convergence`` is the convergence attained by the power method.
 
- The eigenvectors of ``U`` holds the coordinates of the points in a
- low-dimension Euclidean space (typically two or three for plotting).
- This is done for, among other purposes, plotting data in low-dimension
- classifying them and following their trajectories over time or other dimensions.
+ Using the notion of Laplacian, spectral embedding seek a
+ low-dimension representation of the data emphasizing local neighbothood
+ information while neglecting long-distance information.
+ The embedding is non-linear, however the embedding space is Euclidean.
+ The eigenvectors of ``U`` holds the coordinates of the points in the
+ embedding space (typically two- or three-dimensional for plotting or more
+ for clustering). Spectral embedding is done for plotting data in low-dimension,
+ clustering, imaging, classification, following their trajectories over time
+ or other dimensions, and much more.
  For examples of applications see Ridrigues et *al.* (2018) [🎓](@ref)
  and references therein.
 
@@ -765,12 +854,12 @@ end
  ## Examples
     using PosDefManifold
     # Generate a set of 4 random 10x10 SPD matrices
-    Pset=randP(10, 4) # or, using unicode: 𝐏=randP(10, 4)
-    Dsqr=distanceSqrMat(Fisher, Pset) #or: Δ²=distanceSqrMat(Fisher, 𝐏)
-    lap= laplacian(Dsqr) # or: Ω=laplacian(Δ²)
-    evalues, maps, iterations, convergence=laplacianEM(lap, 2)
-    evalues, maps, iterations, convergence=laplacianEM(lap, 2; maxiter=100)
-    evalues, maps, iterations, convergence=laplacianEM(lap, 2; ⍰=true)
+    Pset=randP(10, 4)
+    Δ²=distanceSqrMat(Fisher, Pset)
+    Ω=laplacian(Δ²)
+    evalues, maps, iterations, convergence=laplacianEM(Ω, 2)
+    evalues, maps, iterations, convergence=laplacianEM(Ω, 2; ⍰=true)
+    evalues, maps, iterations, convergence=laplacianEM(Ω, 2; ⍰=true, maxiter=500)
 
 """
 function laplacianEigenMaps(Ω::𝕃{T}, q::Int;
@@ -784,6 +873,7 @@ function laplacianEigenMaps(Ω::𝕃{T}, q::Int;
                                 tol=tolerance,
                                 maxiter=maxiter,
                                 ⍰=⍰)
+    for i=2:q+1 U[:, i]=U[:, i]./U[:, 1] end
     return 𝔻(Λ[2:q+1, 2:q+1]), U[1:size(U, 1), 2:q+1], iter, conv
 end
 laplacianEM=laplacianEigenMaps
@@ -791,14 +881,15 @@ laplacianEM=laplacianEigenMaps
 
 """
 ```
-    (1) spectralEmbedding(metric::Metric, 𝐏::ℍVector, q::Int;
+    (1) spectralEmbedding(metric::Metric, 𝐏::ℍVector, q::Int, epsilon::Real=0;
     <
     tol::Real=0,
     maxiter::Int=300,
+    densityInvariant=false,
     ⍰=false,
     ⏩=false >)
 
-    (2) spectralEmbedding(type::Type{T}, metric::Metric, 𝐏::ℍVector, q::Int;
+    (2) spectralEmbedding(type::Type{T}, metric::Metric, 𝐏::ℍVector, q::Int, epsilon::Real=0;
     < same optional keyword arguments as in (1) >) where T<:Real
 ```
 
@@ -818,25 +909,24 @@ laplacianEM=laplacianEigenMaps
 
   Return the 4-tuple `(Λ, U, iterations, convergence)`, where:
  - ``Λ`` is a ``q⋅q`` diagonal matrix holding on diagonal the eigenvalues corresponding to the ``q`` dimensions of the Laplacian eigen maps,
- - ``U`` holds in columns the ``q`` eigenvectors, i.e., the ``q`` coordinates of the points in the embedded space,
+ - ``U`` holds in columns the ``q`` eigenvectors holding the ``q`` coordinates of the points in the embedding space,
  - ``iterations`` is the number of iterations executed by the power method,
  - ``convergence`` is the convergence attained by the power method.
 
  **Arguments**:
  - `metric` is the metric of type [Metric::Enumerated type](@ref) used for computing the inter-distances,
  - ``𝐏`` is a 1d array of ``k`` positive matrices of [ℍVector type](@ref),
- - ``q`` is the dimension of the Laplacian eigen maps;
- - The following are *<optional keyword arguments>* for the power method iterative algorithm:
-   * `tol` is the tolerance for convergence of the power method (see below),
-   * `maxiter` is the maximum number of iterations allowed for the power method,
-   * if `⍰` is true the convergence at all iterations will be printed.
-   * if ⏩=true the computation of inter-distances is multi-threaded.
+ - ``q`` is the dimension of the Laplacian eigen maps,
+ - ``epsilon`` is the bandwidth of the Laplacian (see [`laplacian`](@ref));
+ - The following *<optional keyword argument>* applyies for computing the inter-distances:
+   * if `⏩=true` the computation of inter-distances is multi-threaded.
+ - The following *<optional keyword argument>* applyies to the computation of the Laplacian by the [`laplacian`](@ref) function:
+   * if `densityInvariant=true` the density-invariant Laplacian is computed (see [`laplacian`](@ref)).
+ - The following are *<optional keyword arguments>* for the power method iterative algorithm invoked by [`laplacianEigenMaps`](@ref):
+     * `tol` is the tolerance for convergence of the power method (see below),
+     * `maxiter` is the maximum number of iterations allowed for the power method,
+     * if `⍰=true` the convergence at all iterations will be printed;
 
-!!! warning "Multi-Threading"
-    [Multi-threading](https://docs.julialang.org/en/v1/manual/parallel-computing/#Multi-Threading-(Experimental)-1)
-    is still experimental in julia. You should check the result on each computer.
-    Multi-threading is automatically disabled if the number of threads
-    Julia is instructed to use is ``<2`` or ``<2k``. See [Threads](@ref).
 
 !!! note "Nota Bene"
     ``tol`` defaults to the square root of `Base.eps` of the `Float32` type (1)
@@ -844,49 +934,72 @@ laplacianEM=laplacianEigenMaps
     equality for the convergence criterion over two successive power iterations
     of about half of the significant digits.
 
+    [Multi-threading](https://docs.julialang.org/en/v1/manual/parallel-computing/#Multi-Threading-(Experimental)-1)
+    is automatically disabled if the number of threads
+    Julia is instructed to use is ``<2`` or ``<2k``. See [Threads](@ref).
+
  **See also**: [`distanceSqrMat`](@ref), [`laplacian`](@ref), [`laplacianEigenMaps`](@ref).
 
  ## Examples
     using PosDefManifold
-    # Generate a set of 4 random 10x10 SPD matrices
-    Pset=randP(10, 4) # or, using unicode: 𝐏=randP(10, 4)
-    evalues, maps, iter, conv=spectralEmbedding(logEuclidean, Pset, 2)
+    # Generate a set of k random 10x10 SPD matrices
+    k=10
+    Pset=randP(10, k)
+    evalues, maps, iter, conv=spectralEmbedding(Fisher, Pset, 2)
 
     # show convergence information
-    evalues, maps, iter, conv=spectralEmbedding(logEuclidean, Pset, 2; ⍰=true)
+    evalues, maps, iter, conv=spectralEmbedding(Fisher, Pset, 2; ⍰=true)
 
     # use Float64 precision.
-    evalues, maps, iter, conv=spectralEmbedding(Float64, logEuclidean, Pset, 2)
+    evalues, maps, iter, conv=spectralEmbedding(Float64, Fisher, Pset, 2)
 
     # Multi-threaded
-    evalues, maps, iter, conv=spectralEmbedding(logEuclidean, Pset, 2, ⏩=true)
+    evalues, maps, iter, conv=spectralEmbedding(Fisher, Pset, k-1; ⍰=true, ⏩=true)
+
+    using Plots
+    # check eigevalues and eigenvectors
+    plot(diag(evalues))
+    plot(maps[:, 1])
+    plot!(maps[:, 2])
+    plot!(maps[:, 3])
+
+    # plot the data in the embedded space
+    plot(maps[:, 1], maps[:, 2], seriestype=:scatter, title="Spectral Embedding", label="Pset")
+
+    # try a different value of epsilon
+    evalues, maps, iter, conv=spEmb(Fisher, Pset, k-1, 0.01; ⏩=true, maxiter=1000)
+    plot(maps[:, 1], maps[:, 2], seriestype=:scatter, title="Spectral Embedding", label="Pset")
+    # see the example in `Laplacian function for more on this`
 
 """
-function spectralEmbedding(type::Type{T}, metric::Metric, 𝐏::ℍVector, q::Int;
-                            tol::Real=0,
-                            maxiter::Int=300,
-                            ⍰=false,
-                            ⏩=false)                where T<:Real
+function spectralEmbedding(type::Type{T}, metric::Metric, 𝐏::ℍVector, q::Int, epsilon::Real=0;
+                           tol::Real=0,
+                           maxiter::Int=300,
+                           densityInvariant=false,
+                           ⍰=false,
+                           ⏩=false)                where T<:Real
+
     tol==0 ? tolerance = √eps(type) : tolerance = tol
     return (Λ, U, iter, conv) =
-            laplacianEM(laplacian(distance²Mat(type, metric, 𝐏, ⏩=⏩)), q;
+            laplacianEM(laplacian(distance²Mat(type, metric, 𝐏, ⏩=⏩), epsilon;
+                        densityInvariant=densityInvariant), q;
                         tol=tolerance,
                         maxiter=maxiter,
                         ⍰=⍰)
 end
 
-function spectralEmbedding(metric::Metric, 𝐏::ℍVector, q::Int;
-                        tol::Real=0,
-                        maxiter::Int=300,
-                        ⍰=false,
-                        ⏩=false)
-    tol==0 ? tolerance = √eps(Float32) : tolerance = tol
-    return (Λ, U, iter, conv) =
-            laplacianEM(laplacian(distance²Mat(metric, 𝐏, ⏩=⏩)), q;
-                        tol=tolerance,
-                        maxiter=maxiter,
-                        ⍰=⍰)
-end
+spectralEmbedding(metric::Metric, 𝐏::ℍVector, q::Int, epsilon::Real=0;
+                  tol::Real=0,
+                  maxiter::Int=300,
+                  densityInvariant=false,
+                  ⍰=false,
+                  ⏩=false) =
+    spectralEmbedding(Float32, metric, 𝐏, q, epsilon;
+                      tol=tol,
+                      maxiter=maxiter,
+                      densityInvariant=densityInvariant,
+                      ⍰=⍰,
+                      ⏩=⏩)
 
 spEmb=spectralEmbedding
 
@@ -905,6 +1018,7 @@ spEmb=spectralEmbedding
     <
     w::Vector=[],
     ✓w=true,
+    ⍰=false,
     ⏩=false >)
 
     (4) mean(metric::Metric, 𝐃::𝔻Vector;
@@ -952,6 +1066,10 @@ spEmb=spectralEmbedding
  For (3) and (4), if `⏩=true` is passed as *<optional keyword argument>*,
  the computation of the mean is multi-threaded.
 
+ For (3) and (4), if `⍰=true` and the mean is found by an itartive algorithm,
+ the covergence attained at each iteration is printed. Other information
+ such as if the algorithm has diverged is printed.
+
 !!! warning "Multi-Threading"
     [Multi-threading](https://docs.julialang.org/en/v1/manual/parallel-computing/#Multi-Threading-(Experimental)-1)
     is still experimental in julia.
@@ -973,7 +1091,7 @@ spEmb=spectralEmbedding
 |logCholesky| ``TT^*``, where `` T=\\sum_{i=1}^{k}(w_kS_k)+\\sum_{i=1}^{k}(w_k\\textrm{log}D_k)``|
 |Jeffrey | ``A^{1/2}\\big(A^{-1/2}HA^{-1/2}\\big)^{1/2}A^{1/2}`` |
 
- and for those that verify an equation:
+ and for those that are found by an iterative algorithm and that verify an equation:
 
 | Metric   | equation verified by the weighted Fréchet mean |
 |:----------:|:----------- |
@@ -995,20 +1113,21 @@ spEmb=spectralEmbedding
     P=randP(3)
     Q=randP(3)
     M=mean(logdet0, P, Q) # (1)
-    M=mean(logdet0, P, Q) # (1)
+    M=mean(Euclidean, P, Q) # (1)
 
-    R=randP(3)
     # passing several matrices and associated weights listing them
     # weights vector, does not need to be normalized
+    R=randP(3)
     mean(Fisher, ℍVector([P, Q, R]); w=[1, 2, 3])
 
     # Generate a set of 4 random 3x3 SPD matrices
-    Pset=randP(3, 4) # or, using unicode: 𝐏=randP(3, 4)
+    Pset=randP(3, 4)
     weights=[1, 2, 3, 1]
     # passing a vector of Hermitian matrices (ℍVector type)
     M=mean(Euclidean, Pset; w=weights) # (2) weighted Euclidean mean
     M=mean(Wasserstein, Pset)  # (2) unweighted Wassertein mean
-    # using unicode: M=mean(Wasserstein, 𝐏)
+    # display convergence information when using an iterative algorithm
+    M=mean(Fisher, Pset; ⍰=true)
 
     # run multi-threaded when the number of matrices is high
     using BenchmarkTools
@@ -1023,21 +1142,22 @@ mean(metric::Metric, D::𝔻{T}, E::𝔻{T}) where T<:Real = geodesic(metric, D,
 function mean(metric::Metric, 𝐏::ℍVector;
               w::Vector=[],
               ✓w=true,
+              ⍰=false,
               ⏩=false)
 
     # iterative solutions
     if  metric == Fisher
-        (G, iter, conv) =   gMean(𝐏; w=w, ✓w=✓w, ⍰=true, ⏩=⏩);
+        (G, iter, conv) =   gMean(𝐏; w=w, ✓w=✓w, ⍰=⍰, ⏩=⏩);
         return G
     end
 
     if  metric == logdet0
-        (G, iter, conv) = ld0Mean(𝐏; w=w, ✓w=✓w, ⍰=true, ⏩=⏩);
+        (G, iter, conv) = ld0Mean(𝐏; w=w, ✓w=✓w, ⍰=⍰, ⏩=⏩);
         return G
     end
 
     if  metric == Wasserstein
-        (G, iter, conv) = wasMean(𝐏; w=w, ✓w=✓w, ⍰=true, ⏩=⏩);
+        (G, iter, conv) = wasMean(𝐏; w=w, ✓w=✓w, ⍰=⍰, ⏩=⏩);
         return G
     end
 
@@ -1106,11 +1226,12 @@ end # function
 function mean(metric::Metric, 𝐃::𝔻Vector;
               w::Vector=[],
               ✓w=true,
+              ⍰=false,
               ⏩=false)
 
     # iterative solutions
     if metric == logdet0
-        (G, iter, conv) = ld0Mean(𝐃; w=w, ✓w=✓w, ⍰=true, ⏩=⏩); return G
+        (G, iter, conv) = ld0Mean(𝐃; w=w, ✓w=✓w, ⍰=⍰, ⏩=⏩); return G
     end
 
     # closed-form expressions and exit
@@ -1366,6 +1487,7 @@ function generalizedMean(𝐏::Union{ℍVector, 𝔻Vector}, p::Real;
 end # function
 
 
+
 """
 ```
     geometricMean(𝐏::Union{ℍVector, 𝔻Vector};
@@ -1375,6 +1497,7 @@ end # function
     init=nothing,
     tol::Real=0,
     maxiter::Int=500,
+    adaptStepSize=true,
     ⍰=false,
     ⏩=false >)
 ```
@@ -1411,6 +1534,7 @@ end # function
  - `maxiter` is the maximum number of iterations allowed
  - if `⍰`=true, the convergence attained at each iteration and the step size ``ς`` is printed. Also, a *warning* is printed if convergence is not attained.
  - if ⏩=true the iterations are multi-threaded (see below).
+ - if `adaptStepSize`=false the step size `ς` is fixed to 1 at all iterations.
 
  If the input is a 1d array of ``k`` real positive definite diagonal matrices
  the solution is available in closed-form as the log Euclidean
@@ -1468,8 +1592,7 @@ end # function
 
     # run multi-threaded when the number of matrices is high
     using BenchmarkTools
-    k=160
-    Pset=randP(20, k)
+    Pset=randP(20, 120)
     @benchmark(geometricMean(Pset)) # single-threaded
     @benchmark(geometricMean(Pset; ⏩=true)) # multi-threaded
 
@@ -1490,24 +1613,17 @@ function geometricMean( 𝐏::ℍVector;
                         init=nothing,
                         tol::Real=0,
                         maxiter::Int=200,
+                        adaptStepSize=true,
                         ⍰=false,
                         ⏩=false)
 
-    k, n, type, thr = dim(𝐏, 1), dim(𝐏, 2), eltype(𝐏[1]), nthreads()
-    n², iter, conv, oldconv, converged, ς = n^2, 1, 0., maxpos, false, 1.
-    ⏩ && k>=thr*4 && thr > 1 ? threaded=true : threaded=false
-    tol==0 ? tolerance = √eps(real(type)) : tolerance = tol
-
-    ⍰ && println("")
-    ⍰ && threaded && @info("Iterating multi-threaded geometricMean Fixed-Point...")
-    ⍰ && !threaded && @info("Iterating geometricMean Fixed-Point...")
-
-    isempty(w) ? v=[] : v = _getWeights(w, ✓w)
+    (k, n, type, thr, n², iter, conv, oldconv, converged, ς, threaded, tolerance, v) = _setVar_IterAlg(𝐏, w, ✓w, tol, ⏩)
+    _giveStartInfo_IterAlg(threaded, ⍰, "geometricMean Fixed-Point")
     init == nothing ? M = mean(logEuclidean, 𝐏; w=v, ✓w=false, ⏩=⏩) : M = ℍ(init)
-    💡 = similar(M, type)
-    threaded ? 𝐐 = 𝕄Vector(repeat([𝐏[1]], thr)) : nothing
-    c1(M⁻½::ℍ, 𝐏::ℍVector) = cong(M⁻½, 𝐏, ℍVector)
-    c2(M⁻½::ℍ, P::ℍ) = cong(M⁻½, P, ℍ)
+    💡 = similar(M, type) # new iteration solution
+    if threaded 𝐐 = 𝕄Vector(repeat([𝐏[1]], thr)) end # memory pre-allocation for fVec function
+    c1(M⁻½::ℍ, 𝐏::ℍVector) = cong(M⁻½, 𝐏, ℍVector) # utility function
+    c2(M⁻½::ℍ, P::ℍ) = cong(M⁻½, P, ℍ) # utility function
 
     # M -< M½ { exp[ς( w_i{sum(i=1 to k) log(M⁻½ 𝐏[i] M⁻½)} )] } M½
     while true
@@ -1517,20 +1633,18 @@ function geometricMean( 𝐏::ℍVector;
         else
             isempty(w) ? ∇ = ℍ(𝛍(log(c2(M⁻½, P)) for P in 𝐏)) : ∇ = ℍ(𝚺(ω * log(c2(M⁻½, P)) for (ω, P) in zip(v, 𝐏)))
         end
-        💡 = ℍ(M½*exp(ς*∇)*M½)
+        adaptStepSize ? 💡 = ℍ(M½*exp(ς*∇)*M½) : 💡 = ℍ(M½*exp(∇)*M½)
 
-        conv = norm(∇)/n²
-        ς = exp(-ℯ * golden * iter / maxiter)
+        conv = norm(∇)/n² # norm of the satisfying equation. It must vanish upon convergence
+        if adaptStepSize ς = exp(-ℯ * golden * iter / maxiter) end # exponetially decaying step size
         ⍰ && println("iteration: ", iter, "; convergence: ", conv, "; ς: ", round(ς * 1000)/1000)
         (diverging = conv > oldconv) && ⍰ && @warn("geometricMean diverged at:", iter)
         (overRun = iter == maxiter) && @warn("geometricMean reached the max number of iterations before convergence:", iter)
         (converged = conv <= tolerance) || overRun==true ? break : M = 💡
-        oldconv=conv
-        iter += 1
+        oldconv=conv; iter += 1
     end # while
 
-    ⍰ ? (converged ? @info("Convergence has been attained.\n") : @warn("Convergence has not been attained.")) : nothing
-    ⍰ && println("")
+    _giveEndInfo_IterAlg(converged, ⍰)
     return (💡, iter, conv)
 end
 
@@ -1550,24 +1664,24 @@ gMean=geometricMean
 
 """
 ```
-    geometricpMean(𝐏::ℍVector, p::Real=goldeninv;
+    geometricpMean(𝐏::ℍVector, p::Real=0.5;
     <
     w::Vector=[],
     ✓w=true,
     init=nothing,
     tol::Real=0,
-    maxiter::Int=750,
+    maxiter::Int=500,
+    adaptStepSize=true,
     ⍰=false,
-    ⏩=false,
-    adaptStepSize=true >)
+    ⏩=false >)
 ```
 
  **alias**: `gpmean`
 
  Given a 1d array ``𝐏={P_1,...,P_k}`` of ``k`` positive definite matrices of
- [ℍVector type](@ref), a real parameter ``0<p<1`` and optional non-negative real
+ [ℍVector type](@ref), a real parameter ``0<p<=1`` and optional non-negative real
  weights vector ``w={w_1,...,w_k}``, return the 3-tuple ``(G, iter, conv)``,
- where ``G`` is the *geometric-p mean*, i.e., the mean according to the
+ where ``G`` is the *p-mean*, i.e., the mean according to the
  [Fisher](@ref) metric minimizing the *p-dispersion* (see below) and
  ``iter``, ``conv`` are the number of
  iterations and convergence attained by the algorithm.
@@ -1577,9 +1691,8 @@ gMean=geometricMean
 
 ``G ←G^{1/2}\\textrm{exp}\\big(ς\\sum_{i=1}^{k}pδ^2(G, P_i)^{p-1}w_i\\textrm{log}(G^{-1/2} P_i G^{-1/2})\\big)G^{1/2}.``
 
-- if ``p=1`` this yields the geometric mean (implemented with fixed step-size in [`geometricMean`](@ref)).
-- if ``p=0.5`` this yields the geometric median.
-- the default value of ``p`` is the inverse of the golden ratio (0.61803...),yielding the *geometric-golden mean*.
+- if ``p=1`` this yields the geometric mean (implemented specifically in [`geometricMean`](@ref)).
+- if ``p=0.5`` this yields the geometric median (default).
 
  If you don't pass a weight vector with *<optional keyword argument>* ``w``,
  return the *unweighted geometric-p mean*.
@@ -1594,9 +1707,9 @@ gMean=geometricMean
  - `init` is a matrix to be used as initialization for the mean. If no matrix is provided, the [log Euclidean](@ref) mean will be used,
  - `tol` is the tolerance for the convergence (see below).
  - `maxiter` is the maximum number of iterations allowed.
+ - if `adaptStepSize`=true (default) the step size ``ς`` for the gradient descent is adapted at each iteration (see below).
  - if `⍰`=true, the step-size and convergence attained at each iteration is printed. Also, a *warning* is printed if convergence is not attained.
  - if ⏩=true the iterations are multi-threaded (see below).
- - if `adaptStepSize`=true (default) the step size ``ς`` for the gradient descent is adapted at each iteration (see below).
 
 !!! warning "Multi-Threading"
     [Multi-threading](https://docs.julialang.org/en/v1/manual/parallel-computing/#Multi-Threading-(Experimental)-1)
@@ -1617,7 +1730,8 @@ gMean=geometricMean
 
     If `adaptStepSize` is true (default) the step-size ``ς`` is adapted at
     each iteration, otherwise a fixed step size ``ς=1`` is used.
-    Adapting the step size in general hastens convergence.
+    Adapting the step size in general hastens convergence and improves
+    the convergence behavior.
 
     ``tol`` defaults to the square root of `Base.eps` of the nearest
     real type of data input ``𝐏``. This corresponds to requiring the
@@ -1636,26 +1750,26 @@ gMean=geometricMean
     # as compared to the standard geometric mean algorithm
 
     # Generate a set of 100 random 10x10 SPD matrices
-    Pset=randP(10, 100)
+    Pset=randP(10, 40)
 
     # Get the usual geometric mean for comparison
-    G, iter1, conv1 = geometricMean(Pset, ⍰=true)
+    G, iter1, conv1 = geometricMean(Pset, ⍰=true, ⏩=true)
 
     # change p to observe how the convergence behavior changes accordingly
-    # Get the golden geometric-p mean (default)
-    H, iter2, conv2 = geometricpMean(Pset, ⍰=true)
-    # Get the geometric median
-    H, iter2, conv2 = geometricpMean(Pset, 0.5, ⍰=true)
+    # Get the median (default)
+    H, iter2, conv2 = geometricpMean(Pset, ⍰=true, ⏩=true)
+    # Get the p-mean for p=0.25
+    H, iter2, conv2 = geometricpMean(Pset, 0.25, ⍰=true, ⏩=true)
 
     println(iter1, " ", iter2); println(conv1, " ", conv2)
 
-    # trasform the first matrix in Pset to create an otlier
-    Pset[1]=Pset[1]*10000
-    G1, iter1, conv1 = geometricMean(Pset, ⍰=true)
-    H1, iter2, conv2 = geometricpMean(Pset, 0.5, ⍰=true)
+    # move the first matrix in Pset to create an otlier
+    Pset[1]=geodesic(Fisher, G, Pset[1], 3)
+    G1, iter1, conv1 = geometricMean(Pset, ⍰=true, ⏩=true)
+    H1, iter2, conv2 = geometricpMean(Pset, 0.25, ⍰=true, ⏩=true)
     println(iter1, " ", iter2); println(conv1, " ", conv2)
 
-    # collect the geometric and geometric-p means, before and after the
+    # collect the geometric and p-means, before and after the
     # introduction of the outier in vector of Hermitian matrices `S`.
     S=HermitianVector([G, G1, H, H1])
 
@@ -1670,41 +1784,36 @@ gMean=geometricMean
     dist=[sum(fullΔ²[:, i]) for i=1:size(fullΔ², 1)]
 
     # plot the matrices in `S` using spectral embedding.
+    using Plots
     Λ, U, iter, conv = laplacianEM(laplacian(Δ²), 3;  ⍰=true)
-    plot([U[1, 1]], [U[1, 2]], seriestype=:scatter, label="g mean")
-    plot!([U[2, 1]], [U[2, 2]], seriestype=:scatter, label="g mean outlier")
-    plot!([U[3, 1]], [U[3, 2]], seriestype=:scatter, label="g-p mean")
-    plot!([U[4, 1]], [U[4, 2]], seriestype=:scatter, label="g-p mean outlier")
+    plot([U[1, 1]], [U[1, 2]], seriestype=:scatter, label="g-mean")
+    plot!([U[2, 1]], [U[2, 2]], seriestype=:scatter, label="g-mean outlier")
+    plot!([U[3, 1]], [U[3, 2]], seriestype=:scatter, label="p-mean")
+    plot!([U[4, 1]], [U[4, 2]], seriestype=:scatter, label="p-mean outlier")
 
-    # run multi-threaded when the number of matrices is high
+    # estimate how much you gain running the algorithm in multi-threaded mode
     using BenchmarkTools
-    Pset=randP(20, 160)
+    Pset=randP(20, 120)
     @benchmark(geometricpMean(Pset)) # single-threaded
-    @benchmark(geometricpMean(Pset, ⏩=true)) # multi-threaded
+    @benchmark(geometricpMean(Pset; ⏩=true)) # multi-threaded
 
 """
 function geometricpMean(𝐏::ℍVector, p::Real=goldeninv;
                         w::Vector = [], ✓w = true,
                         init = nothing,
                         tol::Real = 0,
-                        maxiter::Int = 750,
+                        maxiter::Int = 500,
+                        adaptStepSize=true,
                         ⍰ = false,
-                        ⏩= false,
-                        adaptStepSize=true)
+                        ⏩= false)
 
-    k, n, type, thr = dim(𝐏, 1), dim(𝐏, 2), eltype(𝐏[1]), nthreads()
-    𝑓, d², q, n², sqrtn = Fisher, distance², p-1, n^2, √n
-    iter, conv, oldconv, converged, ς = 1, 0., maxpos, false, 1
-    ⏩ && k>=thr*4 && thr > 1 ? threaded=true : threaded=false
-    isempty(w) ? v=[] : v = _getWeights(w, ✓w)
+    (k, n, type, thr, n², iter, conv, oldconv, converged, ς, threaded, tolerance, v) = _setVar_IterAlg(𝐏, w, ✓w, tol, ⏩)
+    _giveStartInfo_IterAlg(threaded, ⍰, "geometricpMean Fixed-Point")
+    𝑓, d², q, ςHasNotChanged, ςold = Fisher, distance², p-1, 0, 0
     init == nothing ? M = mean(logEuclidean, 𝐏; w=v, ✓w=false, ⏩=⏩) : M = ℍ(init)
-    tol==0 ? tolerance = √eps(real(type)) : tolerance = tol #*1e1
     💡 = similar(M, type)
     𝐑 = similar(𝐏)
-    if threaded 𝐐 = similar(𝐏); end
-    ⍰ && println("")
-    ⍰ && threaded && @info("Iterating multi-threaded geometricpMean Fixed-Point...")
-    ⍰ && !threaded && @info("Iterating geometricpMean Fixed-Point...")
+    if threaded 𝐐 = similar(𝐏) end
 
     while true
         M½, M⁻½ = pow(M, 0.5, -0.5)
@@ -1727,18 +1836,17 @@ function geometricpMean(𝐏::ℍVector, p::Real=goldeninv;
             end
         end
 
-        #conv = √norm(💡-M)/norm(M)
         conv = norm(∇) / n²
 
         if adaptStepSize
-            if conv<oldconv
+            if  conv<=oldconv
                 💡 = ℍ(M½ * exp(ς*∇) * M½)
-                ς = min(sqrtn, ς*1.1)
+                ς < 1 ? ς/=1.1 : ς*=1.1
                 oldconv=conv
             else
-                ς = max(ς/2.2, 1/sqrtn) # = min(1, ς/2)
-                💡 = ℍ(M½ * exp(ς*∇) * M½)
+                ς=1
             end
+            #oldconv=conv
             ⍰ && println("iteration: ", iter, "; convergence: ", conv, "; ς: ", round(ς*1000)/1000)
         else
             💡 = ℍ(M½ * exp(∇) * M½)
@@ -1753,8 +1861,7 @@ function geometricpMean(𝐏::ℍVector, p::Real=goldeninv;
 
     end # while
 
-    ⍰ ? (converged ? @info("Convergence has been attained") : @warn("Convergence has not been attained.")) : nothing
-    ⍰ && println("")
+    _giveEndInfo_IterAlg(converged, ⍰)
     return (💡, iter, conv)
 end
 
@@ -1847,13 +1954,13 @@ gpMean=geometricpMean
     # print the convergence at all iterations
     G, iter, conv = logdet0Mean(Pset; w=weights, ⍰=true)
 
-    # now suppose Pset has changed a bit, initialize with G to hasten convergence
+    # suppose Pset has changed a bit; initialize with G to hasten convergence
     Pset[1]=ℍ(Pset[1]+(randP(3)/100))
     G, iter, conv = logdet0Mean(Pset; w=weights, ✓w=false, ⍰=true, init=G)
 
-    # run multi-threaded when the number of matrices is high
+    # estimate how much you gain running the algorithm in multi-threaded mode
     using BenchmarkTools
-    Pset=randP(20, 160)
+    Pset=randP(20, 120)
     @benchmark(logdet0Mean(Pset)) # single-threaded
     @benchmark(logdet0Mean(Pset; ⏩=true)) # multi-threaded
 """
@@ -1866,18 +1973,13 @@ function logdet0Mean(𝐏::Union{ℍVector, 𝔻Vector};
                     ⍰=false,
                     ⏩=false)
 
-    𝕋=typeofMatrix(𝐏)
-    k, n, type, thr = dim(𝐏, 1), dim(𝐏, 2), eltype(𝐏[1]), nthreads()
-    n², iter, conv, oldconv, converged, l = n^2, 1, 0., maxpos, false, k/2
-    ⏩ && k>=thr*4 && thr > 1 ? threaded=true : threaded=false
-    isempty(w) ? v=[] : v = _getWeights(w, ✓w)
+
+    (k, n, type, thr, n², iter, conv, oldconv, converged, ς, threaded, tolerance, v) = _setVar_IterAlg(𝐏, w, ✓w, tol, ⏩)
+    _giveStartInfo_IterAlg(threaded, ⍰, "logDet0Mean Fixed-Point")
+    𝕋, l = typeofMatrix(𝐏), k/2
     init == nothing ? M = mean(logEuclidean, 𝐏; w=v, ✓w=false, ⏩=⏩) : M = 𝕋(init)
-    tol==0 ? tolerance = √eps(real(type)) : tolerance = tol
     💡 = similar(M, type)
     if threaded 𝐐 = similar(𝐏) end
-    ⍰ && println("")
-    ⍰ && threaded && @info("Iterating multi-threaded logDet0Mean Fixed-Point...")
-    ⍰ && !threaded && @info("Iterating logDet0Mean Fixed-Point...")
 
     while true
         if threaded
@@ -1896,7 +1998,6 @@ function logdet0Mean(𝐏::Union{ℍVector, 𝔻Vector};
             end
         end
 
-        #conv = √norm(💡-M)/norm(M)
         conv = norm(💡-M)/n²
         ⍰ && println("iteration: ", iter, "; convergence: ", conv)
         (diverging = conv > oldconv) && ⍰ && @warn("logdet0Mean diverged at:", iter)
@@ -1906,8 +2007,7 @@ function logdet0Mean(𝐏::Union{ℍVector, 𝔻Vector};
         iter += 1
     end # while
 
-    ⍰ ? (converged ? @info("Convergence has been attained.\n") : @warn("Convergence has not been attained.")) : nothing
-    ⍰ && println("")
+    _giveEndInfo_IterAlg(converged, ⍰)
     return (💡, iter, conv)
 end
 
@@ -2003,13 +2103,13 @@ ld0Mean=logdet0Mean
     # print the convergence at all iterations
     G, iter, conv = wasMean(Pset; w=weights, ⍰=true)
 
-    # now suppose 𝐏 has changed a bit, initialize with G to hasten convergence
+    # suppose 𝐏 has changed a bit; initialize with G to hasten convergence
     Pset[1]=ℍ(Pset[1]+(randP(3)/100))
     G, iter, conv = wasMean(Pset; w=weights, ⍰=true, init=G)
 
-    # run multi-threaded when the number of matrices is high
+    # estimate how much you gain running the algorithm in multi-threaded mode
     using BenchmarkTools
-    Pset=randP(20, 160)
+    Pset=randP(20, 120)
     @benchmark(wasMean(Pset)) # single-threaded
     @benchmark(wasMean(Pset; ⏩=true)) # multi-threaded
 
@@ -2023,17 +2123,12 @@ function wasMean(𝐏::ℍVector;
                 ⍰=false,
                 ⏩=false)
 
-    k, n, type, thr = dim(𝐏, 1), dim(𝐏, 2), eltype(𝐏[1]), nthreads()
-    n², iter, conv, oldconv, converged = n^2, 1, 0., maxpos, false
-    ⏩ && k>=thr*4 && thr > 1 ? threaded=true : threaded=false
-    isempty(w) ? v=[] : v = _getWeights(w, ✓w)
+    (k, n, type, thr, n², iter, conv, oldconv, converged, ς, threaded, tolerance, v) = _setVar_IterAlg(𝐏, w, ✓w, tol, ⏩)
+    _giveStartInfo_IterAlg(threaded, ⍰, "wasMean Fixed-Point")
     init == nothing ? M = generalizedMean(𝐏, 0.5; w=v, ✓w=false, ⏩=⏩) : M = ℍ(init)
     tol==0 ? tolerance = √eps(real(type))*1e2 : tolerance = tol
     💡 = similar(M, type)
     if threaded 𝐐 = similar(𝐏) end
-    ⍰ && println("")
-    ⍰ && threaded && @info("Iterating multi-threaded wasMean Fixed-Point...")
-    ⍰ && !threaded && @info("Iterating wasMean Fixed-Point...")
 
     while true
         M½, M⁻½ = pow(M, 0.5, -0.5)
@@ -2063,8 +2158,7 @@ function wasMean(𝐏::ℍVector;
         iter += 1
     end # while
 
-    ⍰ ? (converged ? @info("Convergence has been attained.\n") : @warn("Convergence has not been attained.")) : nothing
-    ⍰ && println("")
+    _giveEndInfo_IterAlg(converged, ⍰)
     return (💡, iter, conv)
 end
 
@@ -2182,13 +2276,13 @@ wasMean(𝐃::𝔻Vector;
     # print the convergence at all iterations
     G, iter, conv = powerMean(Pset, 0.5; w=weights, ⍰=true)
 
-    # now suppose 𝐏 has changed a bit, initialize with G to hasten convergence
+    # suppose 𝐏 has changed a bit; initialize with G to hasten convergence
     Pset[1]=ℍ(Pset[1]+(randP(3)/100))
     G, iter, conv = powerMean(Pset, 0.5; w=weights, ⍰=true, init=G)
 
-    # run multi-threaded when the number of matrices is high
+    # estimate how much you gain running the algorithm in multi-threaded mode
     using BenchmarkTools
-    Pset=randP(20, 160)
+    Pset=randP(20, 120)
     @benchmark(powerMean(Pset, 0.5)) # single-threaded
     @benchmark(powerMean(Pset, 0.5; ⏩=true)) # multi-threaded
 
@@ -2217,33 +2311,24 @@ function powerMean(𝐏::ℍVector, p::Real;
     elseif p ≈ 1
        return (mean(Euclidean, 𝐏; w=w, ✓w=✓w, ⏩=⏩), 1, 0)
     else
-       # Set Parameters
-       k, n,  type, thr = dim(𝐏, 1), dim(𝐏, 2), eltype(𝐏[1]), nthreads()
-       absp, sqrtn, n² = abs(p), √n, n^2
+       (k, n, type, thr, n², iter, conv, oldconv, converged, ς, threaded, tolerance, v) = _setVar_IterAlg(𝐏, w, ✓w, tol, ⏩)
+       _giveStartInfo_IterAlg(threaded, ⍰, "powerMean Fixed-Point")
+       absp, sqrtn = abs(p), √n
        r = -0.375/absp
-       iter, conv, oldconv, converged = 1, 0., maxpos, false
-       ⏩ && k>=thr*4 && thr > 1 ? threaded=true : threaded=false
-       isempty(w) ? v=[] : v = _getWeights(w, ✓w)
        init == nothing ? M = generalizedMean(𝐏, p; w=v, ✓w=false, ⏩=⏩) : M = ℍ(init)
        p<0 ? X=ℍ(M^(0.5)) : X=ℍ(M^(-0.5))
        💡, H, 𝒫 = similar(X, type), similar(X, type), similar(𝐏)
        p<0 ? 𝒫=[inv(P) for P in 𝐏] : 𝒫=𝐏
-       tol==0 ? tolerance = √eps(real(type)) : tolerance = tol
        if threaded 𝐐 = similar(𝐏) end
-       ⍰ && println("")
-       ⍰ && threaded && @info("Iterating multi-threaded powerMean Fixed-Point...")
-       ⍰ && !threaded && @info("Iterating powerMean Fixed-Point...")
 
        while true
            if threaded
                if isempty(w)
                    @threads for i=1:k 𝐐[i] = ℍ(X*𝒫[i]*X')^absp end
                    H=fVec(𝛍, 𝐐)
-                   💡 = ℍ(H)^r * X
                else
                    @threads for i=1:k 𝐐[i] = v[i] * ℍ(X*𝒫[i]*X')^absp end
                    H=fVec(𝚺, 𝐐)
-                   💡 = ℍ(H)^r * X
                end
            else
                if isempty(w)
@@ -2251,8 +2336,8 @@ function powerMean(𝐏::ℍVector, p::Real;
                else
                    H=𝚺(ω * ℍ(X*P*X')^absp for (ω, P) in zip(v, 𝒫))
                end
-               💡 = ℍ(H)^r * X
            end
+           💡 = ℍ(H)^r * X
 
        conv = norm(H-I)/n²
        ⍰ && println("iteration: ", iter, "; convergence: ", conv)
@@ -2265,8 +2350,7 @@ function powerMean(𝐏::ℍVector, p::Real;
 
     end # if
 
-    ⍰ ? (converged ? @info("Convergence has been attained.\n") : @warn("Convergence has not been attained.")) : nothing
-    ⍰ && println("")
+    _giveEndInfo_IterAlg(converged, ⍰)
     p<0 ? (return ℍ((💡)'*💡), iter, conv) : (return inv(ℍ((💡)'*💡)), iter, conv)
   end # if !(-1<=p<=1)
 end
