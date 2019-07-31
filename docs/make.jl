@@ -4,8 +4,7 @@ using Documenter, PosDefManifold
 makedocs(
    sitename="PosDefManifold",
    modules=[PosDefManifold],
-   pages =
-   [
+   pages =  [
       "index.md",
       "introToRiemannianGeometry.md",
       "MainModule.md",
@@ -13,10 +12,12 @@ makedocs(
       "linearAlgebra.md",
       "statistics.md",
       "signalProcessing.md",
-      "test.md"
+      "test.md",
    ]
 )
 
 deploydocs(
-    repo = "github.com/Marco-Congedo/PosDefManifold.jl.git"
+    repo = "github.com/Marco-Congedo/PosDefManifold.jl.git",
+    target = "build",
+    devurl = "dev",
 )

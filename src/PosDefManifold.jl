@@ -1,10 +1,9 @@
 #    Main Module of the  PosDefManifold Package for julia language
-#    v 0.3.1 - last update 10th of Juin 2019
+#    v 0.3.3 - last update 19th of July 2019
 #
 #    MIT License
 #    Copyright (c) 2019, Marco Congedo, CNRS, Grenobe, France:
 #    https://sites.google.com/site/marcocongedo/home
-
 
 # __precompile__()
 
@@ -172,6 +171,8 @@ export
     logdet0Mean, ld0Mean,
     wasMean,
     powerMean,
+    inductiveMean,
+    midrange,
     logMap,
     expMap,
     vecP,
