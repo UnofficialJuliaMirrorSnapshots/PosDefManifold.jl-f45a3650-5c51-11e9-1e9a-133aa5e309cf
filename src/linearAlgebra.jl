@@ -1,5 +1,5 @@
 #   Unit linearAlgebra.jl, part of PosDefManifold Package for julia language
-#   v 0.3.3 - last update 10th of Juin 2019
+#   v 0.3.4 - last update 5th of September 2019
 #
 #   MIT License
 #   Copyright (c) 2019, Marco Congedo, CNRS, Grenobe, France:
@@ -341,7 +341,7 @@ tr1Msg="function tr1 in LinearAlgebra.jl of PosDefMaifold package: the trace of 
  of a diagonal or of an arbitary square matrix `X` according to the
  Frobenius norm.
  If the eigenvalues of the symmetric part of `X` are all non-negative,
- the result is positive definite and will be falgged as `Hermitian`,
+ the result is positive definite and will be flagged as `Hermitian`,
  otherwise it is positive semi-definite and will not be flagged.
  The nearest matrix is given by
 
