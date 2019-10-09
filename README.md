@@ -12,7 +12,20 @@ This package computes **distances**, **geodesics**, **weighted Fréchet means** 
 
 The [documentation](https://marco-congedo.github.io/PosDefManifold.jl/dev/) is rich and gives all mathematical details pertaining to the implemented functions.
 
+For **machine learning** in **P** see [PosDefManifoldML.jl](https://github.com/Marco-Congedo/PosDefManifoldML.jl).
+
+For **optimization** in **P** see [Manopt.jl](http://www.manoptjl.org/stable/).
+
 For similar code resources in other programming languages see [here](https://sites.google.com/site/marcocongedo/science/code-resources).
+
+## About the author
+
+[Marco Congedo](https://sites.google.com/site/marcocongedo) is
+a research scientist of [CNRS](http://www.cnrs.fr/en) (Centre National de la Recherche Scientifique), working at [UGA](https://www.univ-grenoble-alpes.fr/english/) (University of Grenoble Alpes), in Grenoble (France).
+
+## Contact
+
+marco *dot* congedo *at* gmail *dot* com
 
 ## Examples:
 
@@ -26,7 +39,7 @@ G = mean(Fisher, P, Q)            # mean of P and Q (geodesic mid-point)
 U = procrustes(P, Q)              # solution to a special Procrustes problem
 S = logMap(Fisher, P, G)          # tangent space mapping  
  
-𝐏 = randP(20, 100)                 # random set 𝐏 of 100 PDMs of size (20x20)
+𝐏 = randP(20, 100)                 # random set 𝐏 of 100 PDMs of size 20x20
 G = mean(Fisher, 𝐏)                # mean of all matrices in set 𝐏 
 λ, U, i, c = spEmb(Fisher, 𝐏, 3)   # spectral embedding in 3D
 ```
